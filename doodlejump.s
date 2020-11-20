@@ -30,4 +30,50 @@
 # - (write here, if any)
 #
 #####################################################################
+.data
+	displayAddress:	.word	0x10008000
+	bgColor: 	.word 0xFF93CAF2
+	ballColor: 	.word 0xFFE61A20
+	levelColor: 	.word 0xFF49B616
+
+.globl main
+.text
+
+main:
+	lw $t0, displayAddress	
+	lw $t1, bgColor	
+	lw $t2, ballColor	
+	lw $t3, levelColor	
+	
+	sw $t3, 600($t0)
+	sw $t3, 604($t0)	
+	sw $t3, 608($t0) 
+	sw $t3, 612($t0)
+	
+	sw $t2, 1980($t0)
+	sw $t2, 1984($t0)	
+	sw $t2, 1852($t0) 
+	sw $t2, 1856($t0) 
+	
+	WHILE: 
+		lw $t4, 0xffff0004 
+		beq $t4, 0x6A, moveLeft
+		beq $t4, 0x6B, moveRight
+		j WHILE
+
+drawRandomLevel:
+
+moveLeft:
+	sw $t2, 1988($t0)
+	sw $t2, 1992($t0)	
+	sw $t2, 1860($t0) 
+	sw $t2, 1864($t0)
+
+moveRight:
+
+
+Exit:
+	li $v0, 10 
+	syscall
+	
 
