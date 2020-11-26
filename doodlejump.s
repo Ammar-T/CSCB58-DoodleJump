@@ -32,50 +32,65 @@
 #####################################################################
 .data
 	displayAddress:	.word 0x10008000
-	bgColor: 	.word 0xFF93CAF2
-	ballColor: 	.word 0xFFE61A20
-	levelColor: 	.word 0xFF49B616
-	ballPos: 	.word 1980
-	levelPos:	.word 600 1200 1400 1700 300
-
+	colors: 	.word 0xFF93CAF2 0xFFE61A20 0xFF49B616 # background, ball, level
+	newline: .asciiz "\n"
 .globl main
 .text
 
 main:
 	lw $t0, displayAddress	
-	lw $t1, bgColor	
-	lw $t2, ballColor	
-	lw $t3, levelColor
+	la $t1, colors	
 	
-	sw $t3, 600($t0)
-	sw $t3, 604($t0)	
-	sw $t3, 608($t0) 
-	sw $t3, 612($t0)
-
-	sw $t2, 3260($t0)
-	sw $t2, 3264($t0)	
-	sw $t2, 3132($t0) 
-	sw $t2, 3136($t0)
+	j clearScreen	
+	jal flyUp
 	
 	WHILE: 
+		ble $t0, 268466816, flyDown
 		jal flyUp
+		
 		lw $t8, 0xffff0000 
 		beq $t8, 1, leftOrRight
+		
 		j WHILE
 
 flyUp:	
+	# paint old position black
+	lw $t2, 0($t1)
+	sw $t2, 4028($t0)
+	sw $t2, 4040($t0)
+	sw $t2, 4032($t0)
+	sw $t2, 4036($t0)
+	
    	addi $t0, $t0, -128
-	sw $t2, 2620($t0)
-	sw $t2, 2624($t0)
-	sw $t2, 2492($t0)
-	sw $t2, 2496($t0)
+   	lw $t2, 4($t1)
+	sw $t2, 4032($t0)
+	sw $t2, 4036($t0)
 	
 	li $v0, 32
-	li $a0, 400
+	li $a0, 225
 	syscall
 
 	jr $ra
 
+flyDown:	
+	# paint old position black
+	lw $t2, 0($t1)
+	sw $t2, 4028($t0)
+	sw $t2, 4040($t0)
+	sw $t2, 4032($t0)
+	sw $t2, 4036($t0)
+	
+   	addi $t0, $t0, 128
+   	lw $t2, 4($t1)
+	sw $t2, 4032($t0)
+	sw $t2, 4036($t0)
+	
+	li $v0, 32
+	li $a0, 225
+	syscall
+
+	jr $ra
+	
 leftOrRight:
 	lw $t5, 0xffff0004 
 	beq $t5, 0x6A, moveLeft
@@ -91,8 +106,18 @@ moveRight:
 	j WHILE
 
 	
-drawRandomLevel:
-
+clearScreen:
+	addi $t6, $t6, 0
+	lw $t2, 0($t1)
+	NotCleared:
+		sw $t2, 0($t0)
+		addi $t0, $t0, 4
+		
+		addi $t6, $t6, 1
+		blt $t6, 1024, NotCleared
+		lw $t0, displayAddress
+		j WHILE
+		 
 Exit:
 	li $v0, 10 
 	syscall
