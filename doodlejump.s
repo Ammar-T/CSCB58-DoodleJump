@@ -31,10 +31,12 @@
 #
 #####################################################################
 .data
-	displayAddress:	.word	0x10008000
+	displayAddress:	.word 0x10008000
 	bgColor: 	.word 0xFF93CAF2
 	ballColor: 	.word 0xFFE61A20
 	levelColor: 	.word 0xFF49B616
+	ballPos: 	.word 1980
+	levelPos:	.word 600 1200 1400 1700 300
 
 .globl main
 .text
@@ -43,34 +45,53 @@ main:
 	lw $t0, displayAddress	
 	lw $t1, bgColor	
 	lw $t2, ballColor	
-	lw $t3, levelColor	
+	lw $t3, levelColor
 	
 	sw $t3, 600($t0)
 	sw $t3, 604($t0)	
 	sw $t3, 608($t0) 
 	sw $t3, 612($t0)
-	
-	sw $t2, 1980($t0)
-	sw $t2, 1984($t0)	
-	sw $t2, 1852($t0) 
-	sw $t2, 1856($t0) 
+
+	sw $t2, 3260($t0)
+	sw $t2, 3264($t0)	
+	sw $t2, 3132($t0) 
+	sw $t2, 3136($t0)
 	
 	WHILE: 
-		lw $t4, 0xffff0004 
-		beq $t4, 0x6A, moveLeft
-		beq $t4, 0x6B, moveRight
+		jal flyUp
+		lw $t8, 0xffff0000 
+		beq $t8, 1, leftOrRight
 		j WHILE
 
-drawRandomLevel:
+flyUp:	
+   	addi $t0, $t0, -128
+	sw $t2, 2620($t0)
+	sw $t2, 2624($t0)
+	sw $t2, 2492($t0)
+	sw $t2, 2496($t0)
+	
+	li $v0, 32
+	li $a0, 400
+	syscall
+
+	jr $ra
+
+leftOrRight:
+	lw $t5, 0xffff0004 
+	beq $t5, 0x6A, moveLeft
+	beq $t5, 0x6B, moveRight
+	j WHILE
 
 moveLeft:
-	sw $t2, 1988($t0)
-	sw $t2, 1992($t0)	
-	sw $t2, 1860($t0) 
-	sw $t2, 1864($t0)
+	addi $t0, $t0, -4
+	j WHILE
 
 moveRight:
+	addi $t0, $t0, 4
+	j WHILE
 
+	
+drawRandomLevel:
 
 Exit:
 	li $v0, 10 
