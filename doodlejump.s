@@ -41,19 +41,39 @@ main:
 	lw $t0, displayAddress	
 	la $t1, colors	
 	
-	j clearScreen	
-	jal flyUp
+	jal clearScreen
 	
-	WHILE: 
-		ble $t0, 268466816, flyDown
-		jal flyUp
+	li $a0, 75
+	li $a1, 200
+	jal createLevel
+	
+	li $a0, 325
+	li $a1, 150
+	jal createLevel
+	
+	li $a0, 530
+	li $a1, 150
+	jal createLevel
+	
+	li $a0, 675
+	li $a1, 250
+	jal createLevel
+		
+	RUN: 
+		# fly up
+		li $a0, -128
+		jal changeY
+		
+		# fly down
+		# li $a0, 128
+		# jal changeY
 		
 		lw $t8, 0xffff0000 
 		beq $t8, 1, leftOrRight
 		
-		j WHILE
+		j RUN
 
-flyUp:	
+changeY:	
 	# paint old position black
 	lw $t2, 0($t1)
 	sw $t2, 4028($t0)
@@ -61,7 +81,7 @@ flyUp:
 	sw $t2, 4032($t0)
 	sw $t2, 4036($t0)
 	
-   	addi $t0, $t0, -128
+   	add $t0, $t0, $a0
    	lw $t2, 4($t1)
 	sw $t2, 4032($t0)
 	sw $t2, 4036($t0)
@@ -72,39 +92,37 @@ flyUp:
 
 	jr $ra
 
-flyDown:	
-	# paint old position black
-	lw $t2, 0($t1)
-	sw $t2, 4028($t0)
-	sw $t2, 4040($t0)
-	sw $t2, 4032($t0)
-	sw $t2, 4036($t0)
+createLevel:
+	# set color to green
+	lw $t2, 8($t1)
+
+	move $t4, $a0
+	move $t7, $a1
+		
+	# copy display address
+	move $t5, $t0
 	
-   	addi $t0, $t0, 128
-   	lw $t2, 4($t1)
-	sw $t2, 4032($t0)
-	sw $t2, 4036($t0)
-	
-	li $v0, 32
-	li $a0, 225
+	# generate random number
+	li $v0, 42
+	li $a0, 0
+	move $a1, $t7
 	syscall
-
-	jr $ra
+	add $a0, $a0, $t4
+	move $t6, $a0
 	
-leftOrRight:
-	lw $t5, 0xffff0004 
-	beq $t5, 0x6A, moveLeft
-	beq $t5, 0x6B, moveRight
-	j WHILE
-
-moveLeft:
-	addi $t0, $t0, -4
-	j WHILE
-
-moveRight:
-	addi $t0, $t0, 4
-	j WHILE
-
+	# make multiple of 4
+	sll $t6, $t6, 2
+	add $t5, $t5, $t6	
+	
+	# draw level
+	sw $t2, 0($t5)
+	sw $t2, 4($t5)	
+	sw $t2, 8($t5)	
+	sw $t2, 12($t5)	
+	sw $t2, 16($t5)
+	sw $t2, 20($t5)
+	
+	jr $ra
 	
 clearScreen:
 	addi $t6, $t6, 0
@@ -116,10 +134,23 @@ clearScreen:
 		addi $t6, $t6, 1
 		blt $t6, 1024, NotCleared
 		lw $t0, displayAddress
-		j WHILE
+		li $t6, 0
+		jr $ra
+		
+leftOrRight:
+	lw $t5, 0xffff0004 
+	beq $t5, 0x6A, moveLeft
+	beq $t5, 0x6B, moveRight
+	j RUN
+
+moveLeft:
+	addi $t0, $t0, -4
+	j RUN
+
+moveRight:
+	addi $t0, $t0, 4
+	j RUN
 		 
 Exit:
 	li $v0, 10 
 	syscall
-	
-
