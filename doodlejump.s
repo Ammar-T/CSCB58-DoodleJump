@@ -38,58 +38,71 @@
 .text
 
 main:
-	lw $t0, displayAddress	
-	la $t1, colors	
-	
-	jal clearScreen
-	
-	li $a0, 675
-	li $a1, 250
-	jal createLevel
-	
-	addi $t3, $t3, 4
-	li $a0, 75
-	li $a1, 200
-	jal createLevel
-	
-	addi $t3, $t3, 4
-	li $a0, 325
-	li $a1, 150
-	jal createLevel
+	# Wait for signal (start, restart, exit)
+	lw $t8, 0xffff0000 
+	beq $t8, 1, initGame
+	j main
 
-	addi $t3, $t3, 4
-	li $a0, 530
-	li $a1, 150
-	jal createLevel
-	
-	lw $t2, 0($t1)
-	sw $t2, 0($sp)
-	# Jump height limit counter (limit = 10)
-	addi $t9, $t9, 0
-	
-	# Game loop
-	RUN: 
-		ble $t9, 10, flyUp
-		flyDown:
-			jal RepaintFlyDown
-			li $a0, 128
-			jal changeY
-			jal hitLevel
-			j continue
-		flyUp:	
-			jal RepaintFlyUp
-			addi $t9, $t9, 1
-			li $a0, -128
-			jal changeY
-		continue:
-			# Hit the bottom
-			bge $t0, 268468300, Exit
+	initGame:
+		lw $t5, 0xffff0004
+		beq $t5, 0x71, Exit # Press Q
+		beq $t5, 0x72, StartLoop # Press R
+		beq $t5, 0x73, StartLoop # Press T
+		j main
+
+	StartLoop: 
+		lw $t0, displayAddress	
+		la $t1, colors	
 		
-			# Handle left and right movement
-			lw $t8, 0xffff0000 
-			beq $t8, 1, leftOrRight
+		jal clearScreen
 		
-			j RUN
+		li $a0, 675
+		li $a1, 250
+		jal createLevel
+		
+		addi $t3, $t3, 4
+		li $a0, 75
+		li $a1, 200
+		jal createLevel
+		
+		addi $t3, $t3, 4
+		li $a0, 325
+		li $a1, 150
+		jal createLevel
+
+		addi $t3, $t3, 4
+		li $a0, 530
+		li $a1, 150
+		jal createLevel
+		
+		lw $t2, 0($t1)
+		sw $t2, 0($sp)
+		# Jump height limit counter (limit = 10)
+		li $t9, 0
+		
+		# Game loop
+		RUN: 
+			ble $t9, 10, flyUp
+			flyDown:
+				jal RepaintFlyDown
+				li $a0, 128
+				jal changeY
+				jal hitLevel
+				j continue
+			flyUp:	
+				jal RepaintFlyUp
+				addi $t9, $t9, 1
+				li $a0, -128
+				jal changeY
+			continue:
+				# Hit the bottom
+				bge $t0, 268468300, main
+			
+				# Handle left and right movement
+				lw $t8, 0xffff0000 
+				beq $t8, 1, leftOrRight
+			
+				j RUN
 
 RepaintFlyUp:
 	# push above-block colors onto stack
@@ -132,16 +145,14 @@ createLevel:
 	# set color to green
 	lw $t2, 8($t1)
 
+	# copy lowerbound of level location range
 	move $t4, $a0
-	# move $t7, $a1
-		
 	# copy display address
 	move $t5, $t0
 	
 	# generate random number
 	li $v0, 42
 	li $a0, 0
-	# move $a1, $t7
 	syscall
 	add $a0, $a0, $t4
 	move $t6, $a0
@@ -166,7 +177,7 @@ hitLevel:
 	# green = -11946474
 	beq $t3, -11946474, resetFly
 	# get color of block below (right unit)
-	lw $t3, 4292($t0)
+	lw $t3, 4164($t0)
 	# green = -11946474
 	beq $t3, -11946474, resetFly
 	
@@ -181,7 +192,7 @@ hitLevel:
 	jr $ra
 		
 clearScreen:
-	addi $t6, $t6, 0
+	li $t6, 0
 	lw $t2, 0($t1)
 	NotCleared:
 		sw $t2, 0($t0)
