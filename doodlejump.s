@@ -109,7 +109,7 @@ RepaintFlyUp:
 	addi $sp, $sp, -8
 	lw $t2, 3908($t0)
 	sw $t2, 0($sp)
-	lw $t2, 3912($t0)
+	lw $t2, 3904($t0)
 	sw $t2, 4($sp)
 	jr $ra
 
@@ -118,7 +118,7 @@ RepaintFlyDown:
 	addi $sp, $sp, -8
 	lw $t2, 4164($t0)
 	sw $t2, 0($sp)
-	lw $t2, 4168($t0)
+	lw $t2, 4160($t0)
 	sw $t2, 4($sp)
 	jr $ra
 
@@ -185,9 +185,6 @@ hitLevel:
 	
 	resetFly:
 		li $t9, 0
-		li $v0, 1
-		move $a0, $t9
-		syscall
 	
 	jr $ra
 		
