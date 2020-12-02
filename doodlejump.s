@@ -32,6 +32,7 @@
 #####################################################################
 .data
 	displayAddress:	.word 0x10008000
+	levels: 	.word 0, 0, 0, 0
 	colors: 	.word 0xFF93CAF2 0xFFE61A20 0xFF49B616 # background, ball, level
 	newline: .asciiz "\n"
 .globl main
@@ -56,21 +57,27 @@ main:
 		j main
 
 	StartLoop: 
-		li $a0, 730
-		li $a1, 150
-		jal createLevel
-		
-		li $a0, 75
+		li $t3, 0
+				
+		li $a0, 250
 		li $a1, 200
 		jal createLevel
+		addi $t3, $t3, 4
+		
+		li $a0, 500
+		li $a1, 200
+		jal createLevel
+		addi $t3, $t3, 4
 	
-		li $a0, 325
-		li $a1, 150
+		li $a0, 500
+		li $a1, 200
 		jal createLevel
+		addi $t3, $t3, 4
 
-		li $a0, 530
-		li $a1, 150
+		li $a0, 750
+		li $a1, 200
 		jal createLevel
+		
 		
 		lw $t2, 0($t1)
 		sw $t2, 0($sp)
@@ -81,7 +88,7 @@ main:
 		
 		# Game loop
 		RUN: 		
-			blt $t9, 10, flyUp
+			blt $t9, 12, flyUp
 			flyDown:
 				jal RepaintFlyDown
 				li $a0, 128
@@ -96,8 +103,6 @@ main:
 				
 				# Scroll screen up
 				ble $t0, 268465544, Scroll
-				# Scroll screen up
-				# ble $t0, 268464648, Scroll
 			continue:
 				# Hit the bottom
 				bge $t0, 268470272, main
@@ -110,48 +115,45 @@ main:
 			
 Scroll:
 	li $t6, 0
-	lw $t5, displayAddress
-	
-	li $a0, 25
-	li $a1, 100
-	jal createLevel
+	li $t4, 0
+	la $t8, levels
 		
 	# loop each pixel
-	loopPixel:
-		# get color of block
-		lw $t8, 0($t5)
-		li $t4, 0
-
-		# if green then lower level
-		beq $t8, -11946474, lowerLevel
-
-		nextPixel: 
-			addi $t5, $t5, 4
-			addi $t6, $t6, 1
-			blt $t6, 1024, loopPixel
-			
-			addi $t9, $t9, 2
-			# ble $t0, 268464524, continue
-			# bge $t0, 268465928, continue
-			
-			j RUN
+	loopLevels:
+		beq $t6, 4, RUN
+		
+		# $s4 = levels[i]
+		lw $s4, 0($t8)
+		jal lowerLevel
+		
+		# add 4 per iteration
+		addi $t8, $t8, 4 
+		addi $t6, $t6, 1
+		j loopLevels
+		
+		
 	lowerLevel:
 		# load blue
 		lw $t2, 0($t1)
 		# color current blue
-		sw $t2, 0($t5)
+		sw $t2, 0($s4)
 		# load green color
 		lw $t2, 8($t1)
 		# color bottom block green
-		sw $t2, 384($t5)
-	
+		sw $t2, 256($s4)
+
 		# increment counter and address
-		addi $t5, $t5, 4
+		addi $s4, $s4, 4
 		addi $t4, $t4, 1
 		blt $t4, 8, lowerLevel
 		
-		addi $t5, $t5, 384
-		j nextPixel
+		# update level to new location (256 - 32 = vertical diff - horizontal shift)
+		addi $s4, $s4, 224
+		move $t4, $s4
+		sw $t4, 0($t8)
+		
+		li $t4, 0
+		jr $ra
 	
 RepaintFlyUp:
 	# push above-block colors onto stack
@@ -191,13 +193,9 @@ changeY:
 	jr $ra
 
 createLevel:
-	# set color to green
-	lw $t2, 8($t1)
-
-	# copy lowerbound of level location range
-	move $t4, $a0
 	# copy display address
 	lw $t5, displayAddress
+	move $t4, $a0
 	
 	# generate random number
 	li $v0, 42
@@ -210,7 +208,13 @@ createLevel:
 	sll $t6, $t6, 2
 	add $t5, $t5, $t6	
    	
+   	# add level location to levels array
+   	la $t2, levels
+   	add $t2, $t2, $t3
+   	sw $t5, 0($t2)
+   	
 	# draw level
+	lw $t2, 8($t1)
 	sw $t2, 0($t5)
 	sw $t2, 4($t5)	
 	sw $t2, 8($t5)	
@@ -223,10 +227,14 @@ createLevel:
 	jr $ra
 
 hitLevel: 
+	la $t8, levels
+	
 	# get color of block below (left unit)
 	lw $t5, 4160($t0)
+		
 	# green = -11946474
 	beq $t5, -11946474, resetFly
+	
 	# get color of block below (right unit)
 	lw $t5, 4164($t0)
 	# green = -11946474
