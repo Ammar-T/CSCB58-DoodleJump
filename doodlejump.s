@@ -56,8 +56,8 @@ main:
 		j main
 
 	StartLoop: 
-		li $a0, 675
-		li $a1, 250
+		li $a0, 730
+		li $a1, 150
 		jal createLevel
 		
 		li $a0, 75
@@ -80,8 +80,8 @@ main:
 		li $t3, 0
 		
 		# Game loop
-		RUN: 			
-			ble $t9, 10, flyUp
+		RUN: 		
+			blt $t9, 10, flyUp
 			flyDown:
 				jal RepaintFlyDown
 				li $a0, 128
@@ -90,61 +90,67 @@ main:
 				j continue
 			flyUp:	
 				jal RepaintFlyUp
-				addi $t9, $t9, 1
 				li $a0, -128
 				jal changeY
+				addi $t9, $t9, 1
+				
+				# Scroll screen up
+				ble $t0, 268465544, Scroll
+				# Scroll screen up
+				# ble $t0, 268464648, Scroll
 			continue:
 				# Hit the bottom
-				bge $t0, 268468300, main
-			
+				bge $t0, 268470272, main
+
 				# Handle left and right movement
 				lw $t8, 0xffff0000 
 				beq $t8, 1, leftOrRight
 				
-				# Scroll screen up
-				ble $t0, 268465160, Scroll
-				
 				j RUN
-
+			
 Scroll:
 	li $t6, 0
-	lw $t3, displayAddress
+	lw $t5, displayAddress
 	
+	li $a0, 25
+	li $a1, 100
+	jal createLevel
+		
 	# loop each pixel
 	loopPixel:
 		# get color of block
-		lw $t8, 0($t3)
-		# if green then lower it
+		lw $t8, 0($t5)
 		li $t4, 0
-		beq $t8, -11946474, scrollLevel
-	
+
+		# if green then lower level
+		beq $t8, -11946474, lowerLevel
+
 		nextPixel: 
-			addi $t3, $t3, 4
+			addi $t5, $t5, 4
 			addi $t6, $t6, 1
 			blt $t6, 1024, loopPixel
 			
-			li $a0, 1
-			li $a1, 20
-			jal createLevel
-		
+			addi $t9, $t9, 2
+			# ble $t0, 268464524, continue
+			# bge $t0, 268465928, continue
+			
 			j RUN
-	
-	scrollLevel:
+	lowerLevel:
 		# load blue
 		lw $t2, 0($t1)
 		# color current blue
-		sw $t2, 0($t3)
+		sw $t2, 0($t5)
 		# load green color
 		lw $t2, 8($t1)
 		# color bottom block green
-		sw $t2, 128($t3)
-		
+		sw $t2, 384($t5)
+	
 		# increment counter and address
-		addi $t3, $t3, 4
+		addi $t5, $t5, 4
 		addi $t4, $t4, 1
-		blt $t4, 6, scrollLevel
+		blt $t4, 8, lowerLevel
 		
-		addi $t3, $t3, 128
+		addi $t5, $t5, 384
 		j nextPixel
 	
 RepaintFlyUp:
@@ -173,7 +179,7 @@ changeY:
 	sw $t2, 4036($t0)
 	# wait for sleep to finish
 	li $v0, 32
-	li $a0, 225
+	li $a0, 70
 	syscall
 	# pop from stack and color accordingly
 	lw $t2, 0($sp)
@@ -211,18 +217,20 @@ createLevel:
 	sw $t2, 12($t5)	
 	sw $t2, 16($t5)
 	sw $t2, 20($t5)
+	sw $t2, 24($t5)
+	sw $t2, 28($t5)
 	
 	jr $ra
 
 hitLevel: 
 	# get color of block below (left unit)
-	lw $t3, 4160($t0)
+	lw $t5, 4160($t0)
 	# green = -11946474
-	beq $t3, -11946474, resetFly
+	beq $t5, -11946474, resetFly
 	# get color of block below (right unit)
-	lw $t3, 4164($t0)
+	lw $t5, 4164($t0)
 	# green = -11946474
-	beq $t3, -11946474, resetFly
+	beq $t5, -11946474, resetFly
 	jr $ra
 	
 	resetFly:			
@@ -236,9 +244,6 @@ clearScreen:
 		sw $t2, 0($t0)
 		addi $t0, $t0, 4
 		addi $t6, $t6, 1
-		li $v0, 32
-		li $a0, 3
-		syscall
 		blt $t6, 1024, NotCleared
 		
 	lw $t0, displayAddress
