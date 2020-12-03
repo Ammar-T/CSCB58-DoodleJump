@@ -39,6 +39,17 @@
 	brownLevelActive:   	.word 0
 	colors: 		.word 0xFF3E7EAC 0xFFDB4D6A 0xFF9ABFD9, 0xFFEFF5F9 0xFF4DDBBD # background, ball, level, clouds, text
 	newline: 		.asciiz "\n"
+	zero:			.word 12 0 4 8 128 136 256 264 384 392 512 516 520
+	one:			.word 6 0 4 132 260 388 516
+	two:			.word 11 0 4 8 136 256 260 264 384 512 516 520
+	three:			.word 11 0 4 8 136 256 260 264 392 512 516 520
+	four:			.word 9 0 8 128 136 256 260 264 392 520
+	five:			.word 11 0 4 8 128 256 260 264 392 512 516 520
+	six:			.word 12 0 4 8 128 256 260 264 384 392 512 516 520
+	seven:			.word 8 0 4 8 128 136 264 392 520
+	eight:			.word 13 0 4 8 128 136 256 260 264 384 392 512 516 520
+	nine:			.word 12 0 4 8 128 136 256 260 264 392 512 516 520
+	
 
 .globl main
 .text
@@ -55,6 +66,8 @@ main:
 		li $a0, 0
 		jal clearScreen
 		jal lostText
+		jal scoreText
+		jal printScore
 		
 	# Wait for signal (start, restart, exit)
 	signalAwait:
@@ -684,6 +697,168 @@ lostText:
 	lw $t0, displayAddress
 	jr $ra
 	
+scoreText:
+	la $t1, colors	
+	lw $t0, displayAddress
+	lw $t2, 16($t1)
+	
+	# s
+	addi $t0, $t0, 2328
+	sw $t2, 0($t0)
+	sw $t2, 4($t0)
+	sw $t2, 8($t0)
+	sw $t2, 128($t0)
+	sw $t2, 256($t0)
+	sw $t2, 260($t0)
+	sw $t2, 264($t0)
+	sw $t2, 392($t0)
+	sw $t2, 520($t0)
+	sw $t2, 516($t0)
+	sw $t2, 512($t0)
+	
+	# c
+	addi $t0, $t0, 16
+	sw $t2, 0($t0)
+	sw $t2, 4($t0)
+	sw $t2, 8($t0)
+	sw $t2, 128($t0)
+	sw $t2, 256($t0)
+	sw $t2, 384($t0)
+	sw $t2, 512($t0)
+	sw $t2, 516($t0)
+	sw $t2, 520($t0)
+	
+	# o
+	addi $t0, $t0, 16
+	sw $t2, 0($t0)
+	sw $t2, 4($t0)
+	sw $t2, 8($t0)
+	sw $t2, 128($t0)
+	sw $t2, 136($t0)
+	sw $t2, 256($t0)
+	sw $t2, 264($t0)
+	sw $t2, 384($t0)
+	sw $t2, 392($t0)
+	sw $t2, 512($t0)
+	sw $t2, 516($t0)
+	sw $t2, 520($t0)
+	
+	# r
+	addi $t0, $t0, 16
+	sw $t2, 0($t0)
+	sw $t2, 4($t0)
+	sw $t2, 8($t0)
+	sw $t2, 128($t0)
+	sw $t2, 136($t0)
+	sw $t2, 256($t0)
+	sw $t2, 260($t0)
+	sw $t2, 264($t0)
+	sw $t2, 384($t0)
+	sw $t2, 388($t0)
+	sw $t2, 520($t0)
+	sw $t2, 512($t0)
+	sw $t2, 520($t0)
+	
+	# e
+	addi $t0, $t0, 16
+	sw $t2, 0($t0)
+	sw $t2, 4($t0)
+	sw $t2, 8($t0)
+	sw $t2, 128($t0)
+	sw $t2, 256($t0)
+	sw $t2, 260($t0)
+	sw $t2, 264($t0)
+	sw $t2, 384($t0)
+	sw $t2, 512($t0)
+	sw $t2, 516($t0)
+	sw $t2, 520($t0)
+	
+	# :
+	addi $t0, $t0, 16
+	sw $t2, 128($t0)
+	sw $t2, 384($t0)
+
+
+	addi $t0, $t0, 16
+	
+	lw $t0, displayAddress
+	jr $ra
+	
+printScore:
+	la $t1, colors	
+	lw $t0, displayAddress
+	lw $t2, 16($t1)
+	
+	lw $t5, zero
+	lw $t4, score
+	blt $t4, 10, onesDigit
+	
+	HundredsDigit:
+		div $t4, 10
+		mfhi $t5
+		beq $t5, 0, loadZero
+		beq $t5, 1, loadOne
+		beq $t5, 2, loadTwo
+		beq $t5, 3, loadThree
+		beq $t5, 4, loadFour
+		beq $t5, 5, loadFive
+		beq $t5, 6, loadSix
+		beq $t5, 7, loadSeven
+		beq $t5, 8, loadEight
+		beq $t5, 9, loadNine
+	onesDigit:
+		beq $t4, 0, loadZero
+		beq $t4, 1, loadOne
+		beq $t4, 2, loadTwo
+		beq $t4, 3, loadThree
+		beq $t4, 4, loadFour
+		beq $t4, 5, loadFive
+		beq $t4, 6, loadSix
+		beq $t4, 7, loadSeven
+		beq $t4, 8, loadEight
+		beq $t4, 9, loadNine
+		
+	loadZero:
+		lw $v0, zero
+		jr $ra
+	loadOne:
+		lw $v0, one
+		jr $ra
+	loadTwo:
+		lw $v0, two
+		jr $ra
+	loadThree:
+		lw $v0, three
+		jr $ra
+	loadFour:
+		lw $v0, four
+		jr $ra
+	loadFive:
+		lw $v0, five
+		jr $ra
+	loadSix:	
+		lw $v0, six
+		jr $ra
+	loadSeven:
+		lw $v0, seven
+		jr $ra
+	loadEight:
+		lw $v0, eight
+		jr $ra
+	loadNine:
+		lw $v0, nine
+		jr $ra
+		
+	addi $t0, $t0, 2328
+	
+	
+	
+	
+	addi $t0, $t0, 16
+	
+	lw $t0, displayAddress
+	jr $ra
+	
 leftOrRight:
 	lw $t5, 0xffff0004 
 	beq $t5, 0x6A, moveLeft
@@ -715,7 +890,6 @@ Exit:
 	sw $t2, 384($t0)
 	sw $t2, 388($t0)
 	sw $t2, 392($t0)
-	sw $t2, 520($t0)
 	sw $t2, 512($t0)
 	sw $t2, 516($t0)
 	sw $t2, 520($t0)
