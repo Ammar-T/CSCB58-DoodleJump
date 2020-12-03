@@ -31,27 +31,43 @@
 #
 #####################################################################
 .data
-	displayAddress:	.word 0x10008000
-	levels: 	.word 0, 0, 0
-	score: 		.word 0
-	scrollGrace:	.word 1
-	colors: 	.word 0xFF93CAF2 0xFFE61A20 0xFF49B616 # background, ball, level
-	newline: .asciiz "\n"
+	displayAddress:		.word 0x10008000
+	levels: 		.word 0, 0, 0 # normal, normal, normal
+	score: 			.word 0
+	scrollGrace:		.word 1
+	brownLevelGrace: 	.word 5
+	brownLevelActive:   	.word 0
+	colors: 		.word 0xFF3E7EAC 0xFFDB4D6A 0xFF9ABFD9, 0xFFEFF5F9 0xFF4DDBBD # background, ball, level, clouds, text
+	newline: 		.asciiz "\n"
+
 .globl main
 .text
 
-main:
-	lw $t0, displayAddress	
-	la $t1, colors	
-	
-	jal clearScreen
-	
+main:	
+	preGameText:
+		li $a0, 0
+		jal clearScreen
+		jal startText
+		jal quitText
+		j signalAwait
+		
+	postGameText:
+		li $a0, 0
+		jal clearScreen
+		jal lostText
+		
 	# Wait for signal (start, restart, exit)
-	lw $t8, 0xffff0000 
-	beq $t8, 1, initGame
-	j main
+	signalAwait:
+		lw $t0, displayAddress	
+		la $t1, colors	
+		
+		lw $t8, 0xffff0000 
+		beq $t8, 1, initGame
+		j signalAwait
 
 	initGame:
+		jal clearScreen
+		sw $zero, score
 		lw $t5, 0xffff0004
 		beq $t5, 0x71, Exit 	 # Press Q
 		beq $t5, 0x72, StartLoop # Press R
@@ -61,14 +77,18 @@ main:
 	StartLoop: 
 		li $t3, 0
 		
+		# a0 - height of level, a1 - color of level
+		li $a1, 8
 		li $a0, 27
 		jal createLevel
 		addi $t3, $t3, 4
 	
+		li $a1, 8
 		li $a0, 20
 		jal createLevel
 		addi $t3, $t3, 4
-
+		
+		li $a1, 8
 		li $a0, 13
 		jal createLevel
 		
@@ -104,7 +124,7 @@ main:
 					j Scroll
 			continue:
 				# Hit the bottom
-				bge $t0, 268468120, main
+				bge $t0, 268468120, postGameText
 
 				# Handle left and right movement
 				lw $t8, 0xffff0000 
@@ -118,19 +138,17 @@ Scroll:
 	# if 0, cannot scroll
 	lw $t4, scrollGrace
 	beq $t4, 0, continue
-	# can scroll, reset grace for next iterations
+	# reset grace for next iterations
 	li $t4, 0
 	sw $t4, scrollGrace
 	
 	li $t6, 0
 	li $t4, 0
 	la $t8, levels
-	
-	# loop each level
+
 	loopLevels:
 		beq $t6, 3, addLevelAndContinue
 		
-		# $s4 = levels[i]
 		lw $s4, 0($t8)
 		jal lowerLevel
 		
@@ -140,54 +158,59 @@ Scroll:
 		j loopLevels
 		
 	lowerLevel:
-		# load blue
-		lw $t2, 0($t1)
-		# color current blue
-		sw $t2, 0($s4)
-		# load green color
-		lw $t2, 8($t1)
-		# color bottom block green
-		sw $t2, 896($s4)
+		lowerTopHalf:
+			# load blue
+			lw $t2, 0($t1)
+			# color current blue
+			sw $t2, 0($s4)
+			# load green color
+			lw $t2, 8($t1)
+			# color bottom block green
+			sw $t2, 896($s4)
 		
-		# increment counter and address
-		addi $s4, $s4, 4
-		addi $t4, $t4, 1
-		blt $t4, 8, lowerLevel
+			# increment counter and address
+			addi $s4, $s4, 4
+			addi $t4, $t4, 1
+			blt $t4, 8, lowerTopHalf
+			li $t4, 0
+			addi $s4, $s4, 104
+		lowerBottomHalf:
+			# load blue
+			lw $t2, 0($t1)
+			# color current blue
+			sw $t2, 0($s4)
+			# load green color
+			lw $t2, 8($t1)
+			# color bottom block green
+			sw $t2, 896($s4)
+			addi $s4, $s4, 4
+			addi $t4, $t4, 1
+			blt $t4, 4, lowerBottomHalf
 		
-		# update level to new location (896 - 32 = vertical diff - horizontal shift)
-		addi $s4, $s4, 864
+		# update level to new location (896 - 128 - 24 = vertical diff - horizontal shift)
+		addi $s4, $s4, 744
 		move $t4, $s4
 		sw $t4, 0($t8)
 		
 		li $t4, 0
 		jr $ra
 	
-	addLevelAndContinue:
-		li $v0, 32
-		li $a0, 30
-		syscall
-	
+	addLevelAndContinue:	
 		li $a0, 11
+		li $a1, 8
 		jal createLevel
 		addi $t3, $t3, 4
-		beq $t3, 12, resetLevelCounter
-		j continue
+		ble $t3, 8, continue
+		
 		resetLevelCounter:
 			li $t3, 0
 			j continue
-			
+
 IncreaseScore:
 	lw $t4, score
 	addi $t4, $t4, 1
 	sw $t4, score
 	
-	li $v0, 1
-	move $a0, $t4
-	syscall
-	li $v0, 4
-	la $a0, newline
-	syscall
-
 	jr $ra
 	
 RepaintFlyUp:
@@ -230,8 +253,10 @@ changeY:
 createLevel:
 	# copy display address
 	lw $t5, displayAddress
+	# init which color to make level
+	move $t4, $a1
 	
-	# (5 || 13 || 22 || 27) x 2^7 = 128
+	# 2^7 = 128
 	sll $a0, $a0, 7
 	add $t5, $t5, $a0
 	
@@ -251,7 +276,8 @@ createLevel:
    	sw $t5, 0($t2)
    	
 	# draw level
-	lw $t2, 8($t1)
+	add $t1, $t1, $t4
+	lw $t2, 0($t1)
 	sw $t2, 0($t5)
 	sw $t2, 4($t5)	
 	sw $t2, 8($t5)	
@@ -260,6 +286,11 @@ createLevel:
 	sw $t2, 20($t5)
 	sw $t2, 24($t5)
 	sw $t2, 28($t5)
+	sw $t2, 136($t5)
+	sw $t2, 140($t5)
+	sw $t2, 144($t5)
+	sw $t2, 148($t5)
+	sub $t1, $t1, $t4
 	
 	jr $ra
 
@@ -270,12 +301,11 @@ hitLevel:
 	lw $t5, 4160($t0)
 		
 	# green = -11946474
-	beq $t5, -11946474, resetFly
+	beq $t5, -6635559, resetFly
 	
-	# get color of block below (right unit)
+	# if block below is green
 	lw $t5, 4164($t0)
-	# green = -11946474
-	beq $t5, -11946474, resetFly
+	beq $t5, -6635559, resetFly
 	jr $ra
 	
 	resetFly:	
@@ -287,8 +317,11 @@ hitLevel:
 		li $t9, 0
 		jr $ra
 		
-clearScreen:	
+clearScreen:
+	lw $t0, displayAddress	
+	la $t1, colors	
 	li $t6, 0
+	add $t1, $t1, $a0
 	lw $t2, 0($t1)
 	NotCleared:
 		sw $t2, 0($t0)
@@ -297,9 +330,360 @@ clearScreen:
 		blt $t6, 1024, NotCleared
 	
 	lw $t0, displayAddress
+	sub $t1, $t1, $a0
 	li $t6, 0
+	
+	addi $sp, $sp, -4
+	sw $ra, 0($sp)
+
+	jal drawClouds
+	
+	lw $ra, 0($sp)
+	
 	jr $ra
-		
+
+drawClouds:
+	lw $t0, displayAddress
+	lw $t2, 12($t1)
+	
+	# top left cloud
+	sw $t2, 12($t0)
+	sw $t2, 136($t0)
+	sw $t2, 140($t0)
+	sw $t2, 144($t0)
+	sw $t2, 260($t0)
+	sw $t2, 264($t0)
+	sw $t2, 268($t0)
+	sw $t2, 272($t0)
+	sw $t2, 276($t0)
+	sw $t2, 280($t0)
+	
+	# middles left cloud
+	addi $t0, $t0, 1572
+	sw $t2, 12($t0)
+	sw $t2, 136($t0)
+	sw $t2, 140($t0)
+	sw $t2, 144($t0)
+	sw $t2, 260($t0)
+	sw $t2, 264($t0)
+	sw $t2, 268($t0)
+	sw $t2, 272($t0)
+	sw $t2, 276($t0)
+	sw $t2, 280($t0)
+	subi $t0, $t0, 1572
+	
+	# top right cloud
+	sw $t2, 224($t0)
+	sw $t2, 348($t0)
+	sw $t2, 352($t0)
+	sw $t2, 356($t0)
+	sw $t2, 468($t0)
+	sw $t2, 472($t0)
+	sw $t2, 476($t0)
+	sw $t2, 480($t0)
+	sw $t2, 484($t0)
+	sw $t2, 488($t0)
+	sw $t2, 492($t0)
+	
+	# top right cloud
+	addi $t0, $t0, 3328
+	sw $t2, 224($t0)
+	sw $t2, 348($t0)
+	sw $t2, 352($t0)
+	sw $t2, 356($t0)
+	sw $t2, 468($t0)
+	sw $t2, 472($t0)
+	sw $t2, 476($t0)
+	sw $t2, 480($t0)
+	sw $t2, 484($t0)
+	sw $t2, 488($t0)
+	sw $t2, 492($t0)
+	
+	lw $t0, displayAddress
+	jr $ra
+
+startText:
+	la $t1, colors	
+	lw $t0, displayAddress
+	lw $t2, 16($t1)
+	
+	# s
+	addi $t0, $t0, 652
+	sw $t2, 0($t0)
+	sw $t2, 4($t0)
+	sw $t2, 8($t0)
+	sw $t2, 128($t0)
+	sw $t2, 256($t0)
+	sw $t2, 260($t0)
+	sw $t2, 264($t0)
+	sw $t2, 392($t0)
+	sw $t2, 520($t0)
+	sw $t2, 516($t0)
+	sw $t2, 512($t0)
+	
+	
+	# t
+	addi $t0, $t0, 16
+	sw $t2, 0($t0)
+	sw $t2, 4($t0)
+	sw $t2, 8($t0)
+	sw $t2, 132($t0)
+	sw $t2, 260($t0)
+	sw $t2, 388($t0)
+	sw $t2, 516($t0)
+	
+	#a
+	addi $t0, $t0, 16
+	sw $t2, 0($t0)
+	sw $t2, 4($t0)
+	sw $t2, 8($t0)
+	sw $t2, 128($t0)
+	sw $t2, 136($t0)
+	sw $t2, 256($t0)
+	sw $t2, 260($t0)
+	sw $t2, 264($t0)
+	sw $t2, 384($t0)
+	sw $t2, 392($t0)
+	sw $t2, 520($t0)
+	sw $t2, 512($t0)
+	sw $t2, 520($t0)
+	
+	#r
+	addi $t0, $t0, 16
+	sw $t2, 0($t0)
+	sw $t2, 4($t0)
+	sw $t2, 8($t0)
+	sw $t2, 128($t0)
+	sw $t2, 136($t0)
+	sw $t2, 256($t0)
+	sw $t2, 260($t0)
+	sw $t2, 264($t0)
+	sw $t2, 384($t0)
+	sw $t2, 388($t0)
+	sw $t2, 520($t0)
+	sw $t2, 512($t0)
+	sw $t2, 520($t0)
+	
+	#t
+	addi $t0, $t0, 16
+	sw $t2, 0($t0)
+	sw $t2, 4($t0)
+	sw $t2, 8($t0)
+	sw $t2, 132($t0)
+	sw $t2, 260($t0)
+	sw $t2, 388($t0)
+	sw $t2, 516($t0)
+	
+	# -
+	addi $t0, $t0, 16
+	sw $t2, 256($t0)
+	sw $t2, 260($t0)
+	sw $t2, 264($t0)
+	
+	# r
+	addi $t0, $t0, 16
+	sw $t2, 0($t0)
+	sw $t2, 4($t0)
+	sw $t2, 8($t0)
+	sw $t2, 128($t0)
+	sw $t2, 136($t0)
+	sw $t2, 256($t0)
+	sw $t2, 260($t0)
+	sw $t2, 264($t0)
+	sw $t2, 384($t0)
+	sw $t2, 388($t0)
+	sw $t2, 520($t0)
+	sw $t2, 512($t0)
+	sw $t2, 520($t0)
+	
+	addi $t0, $t0, 16
+	
+	lw $t0, displayAddress
+	jr $ra
+
+quitText:
+	la $t1, colors	
+	lw $t0, displayAddress
+	lw $t2, 16($t1)
+	
+	# q
+	addi $t0, $t0, 2452
+	sw $t2, 0($t0)
+	sw $t2, 4($t0)
+	sw $t2, 8($t0)
+	sw $t2, 128($t0)
+	sw $t2, 136($t0)
+	sw $t2, 256($t0)
+	sw $t2, 264($t0)
+	sw $t2, 384($t0)
+	sw $t2, 388($t0)
+	sw $t2, 392($t0)
+	sw $t2, 516($t0)
+	
+	# u
+	addi $t0, $t0, 16
+	sw $t2, 0($t0)
+	sw $t2, 8($t0)
+	sw $t2, 128($t0)
+	sw $t2, 136($t0)
+	sw $t2, 256($t0)
+	sw $t2, 264($t0)
+	sw $t2, 384($t0)
+	sw $t2, 392($t0)
+	sw $t2, 520($t0)
+	sw $t2, 512($t0)
+	sw $t2, 516($t0)
+	sw $t2, 520($t0)
+		 
+	# i
+	addi $t0, $t0, 12
+	sw $t2, 4($t0)
+	sw $t2, 132($t0)
+	sw $t2, 260($t0)
+	sw $t2, 388($t0)
+	sw $t2, 516($t0)
+	
+	# t
+	addi $t0, $t0, 12
+	sw $t2, 0($t0)
+	sw $t2, 4($t0)
+	sw $t2, 8($t0)
+	sw $t2, 132($t0)
+	sw $t2, 260($t0)
+	sw $t2, 388($t0)
+	sw $t2, 516($t0)
+	
+	# -
+	addi $t0, $t0, 16
+	sw $t2, 256($t0)
+	sw $t2, 260($t0)
+	sw $t2, 264($t0)
+	
+	# q
+	addi $t0, $t0, 16
+	sw $t2, 0($t0)
+	sw $t2, 4($t0)
+	sw $t2, 8($t0)
+	sw $t2, 128($t0)
+	sw $t2, 136($t0)
+	sw $t2, 256($t0)
+	sw $t2, 264($t0)
+	sw $t2, 384($t0)
+	sw $t2, 388($t0)
+	sw $t2, 392($t0)
+	sw $t2, 516($t0)
+	
+	addi $t0, $t0, 16
+	
+	lw $t0, displayAddress
+	jr $ra
+	
+lostText:
+	la $t1, colors	
+	lw $t0, displayAddress
+	lw $t2, 16($t1)
+	
+	# y
+	addi $t0, $t0, 772
+	sw $t2, 0($t0)
+	sw $t2, 8($t0)
+	sw $t2, 128($t0)
+	sw $t2, 136($t0)
+	sw $t2, 260($t0)
+	sw $t2, 388($t0)
+	sw $t2, 516($t0)
+	
+	# o
+	addi $t0, $t0, 16
+	sw $t2, 0($t0)
+	sw $t2, 4($t0)
+	sw $t2, 8($t0)
+	sw $t2, 128($t0)
+	sw $t2, 136($t0)
+	sw $t2, 256($t0)
+	sw $t2, 264($t0)
+	sw $t2, 384($t0)
+	sw $t2, 392($t0)
+	sw $t2, 512($t0)
+	sw $t2, 516($t0)
+	sw $t2, 520($t0)
+		 
+	# u
+	addi $t0, $t0, 16
+	sw $t2, 0($t0)
+	sw $t2, 8($t0)
+	sw $t2, 128($t0)
+	sw $t2, 136($t0)
+	sw $t2, 256($t0)
+	sw $t2, 264($t0)
+	sw $t2, 384($t0)
+	sw $t2, 392($t0)
+	sw $t2, 520($t0)
+	sw $t2, 512($t0)
+	sw $t2, 516($t0)
+	sw $t2, 520($t0)
+	
+	# l
+	addi $t0, $t0, 20
+	sw $t2, 0($t0)
+	sw $t2, 128($t0)
+	sw $t2, 256($t0)
+	sw $t2, 384($t0)
+	sw $t2, 520($t0)
+	sw $t2, 512($t0)
+	sw $t2, 516($t0)
+	sw $t2, 520($t0)
+	
+	# o
+	addi $t0, $t0, 16
+	sw $t2, 0($t0)
+	sw $t2, 4($t0)
+	sw $t2, 8($t0)
+	sw $t2, 128($t0)
+	sw $t2, 136($t0)
+	sw $t2, 256($t0)
+	sw $t2, 264($t0)
+	sw $t2, 384($t0)
+	sw $t2, 392($t0)
+	sw $t2, 512($t0)
+	sw $t2, 516($t0)
+	sw $t2, 520($t0)
+	
+	# s
+	addi $t0, $t0, 16
+	sw $t2, 0($t0)
+	sw $t2, 4($t0)
+	sw $t2, 8($t0)
+	sw $t2, 128($t0)
+	sw $t2, 256($t0)
+	sw $t2, 260($t0)
+	sw $t2, 264($t0)
+	sw $t2, 392($t0)
+	sw $t2, 520($t0)
+	sw $t2, 516($t0)
+	sw $t2, 512($t0)
+	
+	# t
+	addi $t0, $t0, 16
+	sw $t2, 0($t0)
+	sw $t2, 4($t0)
+	sw $t2, 8($t0)
+	sw $t2, 132($t0)
+	sw $t2, 260($t0)
+	sw $t2, 388($t0)
+	sw $t2, 516($t0)
+	
+	addi $t0, $t0, 12
+	sw $t2, 4($t0)
+	sw $t2, 132($t0)
+	sw $t2, 260($t0)
+	sw $t2, 516($t0)
+	
+	addi $t0, $t0, 16
+	
+	lw $t0, displayAddress
+	jr $ra
+	
 leftOrRight:
 	lw $t5, 0xffff0004 
 	beq $t5, 0x6A, moveLeft
@@ -318,5 +702,21 @@ Exit:
 	li $v0, 10 
 	syscall
 	
-	
+	# layout
+	sw $t2, 0($t0)
+	sw $t2, 4($t0)
+	sw $t2, 8($t0)
+	sw $t2, 128($t0)
+	sw $t2, 132($t0)
+	sw $t2, 136($t0)
+	sw $t2, 256($t0)
+	sw $t2, 260($t0)
+	sw $t2, 264($t0)
+	sw $t2, 384($t0)
+	sw $t2, 388($t0)
+	sw $t2, 392($t0)
+	sw $t2, 520($t0)
+	sw $t2, 512($t0)
+	sw $t2, 516($t0)
+	sw $t2, 520($t0)
 		 
