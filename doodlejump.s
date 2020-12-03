@@ -32,7 +32,9 @@
 #####################################################################
 .data
 	displayAddress:	.word 0x10008000
-	levels: 	.word 0, 0, 0, 0
+	levels: 	.word 0, 0, 0
+	score: 		.word 0
+	scrollGrace:	.word 1
 	colors: 	.word 0xFF93CAF2 0xFFE61A20 0xFF49B616 # background, ball, level
 	newline: .asciiz "\n"
 .globl main
@@ -58,20 +60,16 @@ main:
 
 	StartLoop: 
 		li $t3, 0
-				
-		li $a0, 28
-		jal createLevel
-		addi $t3, $t3, 4
 		
-		li $a0, 25
+		li $a0, 27
 		jal createLevel
 		addi $t3, $t3, 4
 	
-		li $a0, 17
+		li $a0, 20
 		jal createLevel
 		addi $t3, $t3, 4
 
-		li $a0, 10
+		li $a0, 13
 		jal createLevel
 		
 		lw $t2, 0($t1)
@@ -96,12 +94,17 @@ main:
 				jal changeY
 				addi $t9, $t9, 1
 				
-				blt $t0, 268465472, continue
-				bgt $t0, 268465600, continue
+				blt $t0, 268465728, scrollRange2
+				bgt $t0, 268465856, scrollRange2
 				j Scroll
+				
+				scrollRange2:
+					blt $t0, 268465216, continue
+					bgt $t0, 268465344, continue
+					j Scroll
 			continue:
 				# Hit the bottom
-				bge $t0, 268468248, main
+				bge $t0, 268468120, main
 
 				# Handle left and right movement
 				lw $t8, 0xffff0000 
@@ -110,14 +113,22 @@ main:
 				j RUN
 			
 Scroll:
+	jal IncreaseScore
+	
+	# if 0, cannot scroll
+	lw $t4, scrollGrace
+	beq $t4, 0, continue
+	# can scroll, reset grace for next iterations
+	li $t4, 0
+	sw $t4, scrollGrace
+	
 	li $t6, 0
 	li $t4, 0
 	la $t8, levels
-	addi $t0, $t0, 256
 	
 	# loop each level
 	loopLevels:
-		beq $t6, 4, addLevelAndContinue
+		beq $t6, 3, addLevelAndContinue
 		
 		# $s4 = levels[i]
 		lw $s4, 0($t8)
@@ -136,15 +147,15 @@ Scroll:
 		# load green color
 		lw $t2, 8($t1)
 		# color bottom block green
-		sw $t2, 768($s4)
-
+		sw $t2, 896($s4)
+		
 		# increment counter and address
 		addi $s4, $s4, 4
 		addi $t4, $t4, 1
 		blt $t4, 8, lowerLevel
 		
-		# update level to new location (768 - 32 = vertical diff - horizontal shift)
-		addi $s4, $s4, 736
+		# update level to new location (896 - 32 = vertical diff - horizontal shift)
+		addi $s4, $s4, 864
 		move $t4, $s4
 		sw $t4, 0($t8)
 		
@@ -152,14 +163,32 @@ Scroll:
 		jr $ra
 	
 	addLevelAndContinue:
-		li $a0, 3
+		li $v0, 32
+		li $a0, 30
+		syscall
+	
+		li $a0, 11
 		jal createLevel
 		addi $t3, $t3, 4
-		beq $t3, 16, resetLevelCounter
+		beq $t3, 12, resetLevelCounter
 		j continue
 		resetLevelCounter:
 			li $t3, 0
 			j continue
+			
+IncreaseScore:
+	lw $t4, score
+	addi $t4, $t4, 1
+	sw $t4, score
+	
+	li $v0, 1
+	move $a0, $t4
+	syscall
+	li $v0, 4
+	la $a0, newline
+	syscall
+
+	jr $ra
 	
 RepaintFlyUp:
 	# push above-block colors onto stack
@@ -249,7 +278,12 @@ hitLevel:
 	beq $t5, -11946474, resetFly
 	jr $ra
 	
-	resetFly:			
+	resetFly:	
+		# end scrolling grace period
+		lw $t4, scrollGrace
+		addi $t4, $t4, 1
+		sw $t4, scrollGrace
+			
 		li $t9, 0
 		jr $ra
 		
@@ -285,10 +319,4 @@ Exit:
 	syscall
 	
 	
-		#li $v0, 1
-		#move $a0, $t6
-		#syscall
-		# Display newline
-		#li $v0, 4
-		#la $a0, newline
-		#syscall 
+		 
