@@ -14,13 +14,13 @@
 #
 # Which milestone is reached in this submission?
 # (See the assignment handout for descriptions of the milestones)
-# - Milestone 1/2/3/4/5 (choose the one the applies)
+# - Milestone 4/5 (choose the one the applies)
 #
 # Which approved additional features have been implemented?
 # (See the assignment handout for the list of additional features)
-# 1. (fill in the feature, if any)
-# 2. (fill in the feature, if any)
-# 3. (fill in the feature, if any)
+# 1. Fancier graphics
+# 2. TBD - dynamic notifications
+# 3. TBD - boosting/powerups
 # ... (add more if necessary)
 #
 # Link to video demonstration for final submission:
@@ -34,22 +34,10 @@
 	displayAddress:		.word 0x10008000
 	levels: 		.word 0, 0, 0 # normal, normal, normal
 	score: 			.word 0
+	speed:			.word 75
 	scrollGrace:		.word 1
-	brownLevelGrace: 	.word 5
-	brownLevelActive:   	.word 0
-	colors: 		.word 0xFF3E7EAC 0xFFDB4D6A 0xFF9ABFD9, 0xFFEFF5F9 0xFF4DDBBD # background, ball, level, clouds, text
+	colors: 		.word 0xFF3E7EAC 0xFFDB4D6A 0xFF9ABFD9, 0xFFEFF5F9 0xFF4DDBBD, 0xFFFF6347 # background, ball, level, clouds, text, score
 	newline: 		.asciiz "\n"
-	zero:			.word 12 0 4 8 128 136 256 264 384 392 512 516 520
-	one:			.word 6 0 4 132 260 388 516
-	two:			.word 11 0 4 8 136 256 260 264 384 512 516 520
-	three:			.word 11 0 4 8 136 256 260 264 392 512 516 520
-	four:			.word 9 0 8 128 136 256 260 264 392 520
-	five:			.word 11 0 4 8 128 256 260 264 392 512 516 520
-	six:			.word 12 0 4 8 128 256 260 264 384 392 512 516 520
-	seven:			.word 8 0 4 8 128 136 264 392 520
-	eight:			.word 13 0 4 8 128 136 256 260 264 384 392 512 516 520
-	nine:			.word 12 0 4 8 128 136 256 260 264 392 512 516 520
-	
 
 .globl main
 .text
@@ -105,6 +93,7 @@ main:
 		li $a0, 13
 		jal createLevel
 		
+		# add colors to stack
 		lw $t2, 0($t1)
 		sw $t2, 0($sp)
 		
@@ -147,7 +136,7 @@ main:
 			
 Scroll:
 	jal IncreaseScore
-	
+
 	# if 0, cannot scroll
 	lw $t4, scrollGrace
 	beq $t4, 0, continue
@@ -224,24 +213,55 @@ IncreaseScore:
 	addi $t4, $t4, 1
 	sw $t4, score
 	
+	bge $t4, 50, increaseSpeed44
+	bge $t4, 20, increaseSpeed50
+	bge $t4, 10, increaseSpeed60
+	increaseSpeed60:
+		li $t4, 60
+		sw $t4, speed
+		jr $ra
+	increaseSpeed50:
+		li $t4, 50
+		sw $t4, speed
+		jr $ra
+	increaseSpeed44:
+		li $t4, 44
+		sw $t4, speed
+		
 	jr $ra
 	
 RepaintFlyUp:
 	# push above-block colors onto stack
-	addi $sp, $sp, -8
-	lw $t2, 3908($t0)
+	addi $sp, $sp, -24
+	lw $t2, 3656($t0)
 	sw $t2, 0($sp)
-	lw $t2, 3904($t0)
+	lw $t2, 3648($t0)
 	sw $t2, 4($sp)
+	lw $t2, 3780($t0)
+	sw $t2, 8($sp)
+	lw $t2, 3912($t0)
+	sw $t2, 12($sp)
+	lw $t2, 3908($t0)
+	sw $t2, 16($sp)
+	lw $t2, 3904($t0)
+	sw $t2, 20($sp)
 	jr $ra
 
 RepaintFlyDown:
 	# push below-block colors onto stack
-	addi $sp, $sp, -8
-	lw $t2, 4164($t0)
+	addi $sp, $sp, -24
+	lw $t2, 3912($t0) # top
 	sw $t2, 0($sp)
-	lw $t2, 4160($t0)
+	lw $t2, 3904($t0) # top
 	sw $t2, 4($sp)
+	lw $t2, 4036($t0) # top
+	sw $t2, 8($sp)
+	lw $t2, 4168($t0) # bot right
+	sw $t2, 12($sp)
+	lw $t2, 4164($t0) # bot middle
+	sw $t2, 16($sp)
+	lw $t2, 4160($t0) # bot left
+	sw $t2, 20($sp)
 	jr $ra
 
 changeY:	
@@ -250,19 +270,46 @@ changeY:
    	lw $t2, 4($t1)
 	sw $t2, 4032($t0)
 	sw $t2, 4036($t0)
+	sw $t2, 4040($t0)
+	sw $t2, 3908($t0)
+	sw $t2, 3776($t0)
+	sw $t2, 3784($t0)
 	# wait for sleep to finish
+	lw $t4, speed
 	li $v0, 32
-	li $a0, 70
+	move $a0, $t4
 	syscall
 	# pop from stack and color accordingly
 	lw $t2, 0($sp)
-	sw $t2, 4036($t0)
+	sw $t2, 3784($t0)
 	lw $t2, 4($sp)
+	sw $t2, 3776($t0)
+	lw $t2, 8($sp)
+	sw $t2, 3908($t0)
+	lw $t2, 12($sp)
+	sw $t2, 4040($t0)
+	lw $t2, 16($sp)
+	sw $t2, 4036($t0)
+	lw $t2, 20($sp)
 	sw $t2, 4032($t0)
-	addi $sp, $sp, 8
+	addi $sp, $sp, 24
 	
 	jr $ra
+	
+leftOrRight:
+	lw $t5, 0xffff0004 
+	beq $t5, 0x6A, moveLeft
+	beq $t5, 0x6B, moveRight
+	j RUN
 
+moveLeft:
+	addi $t0, $t0, -4
+	j RUN
+
+moveRight:
+	addi $t0, $t0, 4
+	j RUN
+	
 createLevel:
 	# copy display address
 	lw $t5, displayAddress
@@ -310,15 +357,20 @@ createLevel:
 hitLevel: 
 	la $t8, levels
 	
-	# get color of block below (left unit)
+	
+	
+	# get color of block below (middle unit)
 	lw $t5, 4160($t0)
-		
-	# green = -11946474
 	beq $t5, -6635559, resetFly
 	
-	# if block below is green
+	# if block below is green (right unit)
 	lw $t5, 4164($t0)
 	beq $t5, -6635559, resetFly
+	
+	# get color of block below (left unit)
+	lw $t5, 4168($t0)
+	beq $t5, -6635559, resetFly
+	
 	jr $ra
 	
 	resetFly:	
@@ -354,6 +406,14 @@ clearScreen:
 	lw $ra, 0($sp)
 	
 	jr $ra
+
+
+###############################         DRAWINGS // TEXT        ############################################# 
+###############################         DRAWINGS // TEXT        ############################################# 
+###############################         DRAWINGS // TEXT        ############################################# 
+###############################         DRAWINGS // TEXT        ############################################# 
+###############################         DRAWINGS // TEXT        ############################################# 
+###############################         DRAWINGS // TEXT        ############################################# 
 
 drawClouds:
 	lw $t0, displayAddress
@@ -696,11 +756,20 @@ lostText:
 	
 	lw $t0, displayAddress
 	jr $ra
+
+wowText:
+	# TBD
+
+coolText:
+	# TBD
 	
+yayText:
+	# TBD
+		
 scoreText:
 	la $t1, colors	
 	lw $t0, displayAddress
-	lw $t2, 16($t1)
+	lw $t2, 20($t1)
 	
 	# s
 	addi $t0, $t0, 2328
@@ -787,97 +856,201 @@ scoreText:
 printScore:
 	la $t1, colors	
 	lw $t0, displayAddress
-	lw $t2, 16($t1)
+	lw $t2, 20($t1)
 	
-	lw $t5, zero
+	li $t3, 10
 	lw $t4, score
-	blt $t4, 10, onesDigit
+	div $t4, $t3
+	mflo $t5
+	mfhi $t6
 	
-	HundredsDigit:
-		div $t4, 10
-		mfhi $t5
-		beq $t5, 0, loadZero
-		beq $t5, 1, loadOne
-		beq $t5, 2, loadTwo
-		beq $t5, 3, loadThree
-		beq $t5, 4, loadFour
-		beq $t5, 5, loadFive
-		beq $t5, 6, loadSix
-		beq $t5, 7, loadSeven
-		beq $t5, 8, loadEight
-		beq $t5, 9, loadNine
-	onesDigit:
-		beq $t4, 0, loadZero
-		beq $t4, 1, loadOne
-		beq $t4, 2, loadTwo
-		beq $t4, 3, loadThree
-		beq $t4, 4, loadFour
-		beq $t4, 5, loadFive
-		beq $t4, 6, loadSix
-		beq $t4, 7, loadSeven
-		beq $t4, 8, loadEight
-		beq $t4, 9, loadNine
+	li $v0, 1
+	move $a0, $t5	
+	syscall
 		
-	loadZero:
-		lw $v0, zero
-		jr $ra
-	loadOne:
-		lw $v0, one
-		jr $ra
-	loadTwo:
-		lw $v0, two
-		jr $ra
-	loadThree:
-		lw $v0, three
-		jr $ra
-	loadFour:
-		lw $v0, four
-		jr $ra
-	loadFive:
-		lw $v0, five
-		jr $ra
-	loadSix:	
-		lw $v0, six
-		jr $ra
-	loadSeven:
-		lw $v0, seven
-		jr $ra
-	loadEight:
-		lw $v0, eight
-		jr $ra
-	loadNine:
-		lw $v0, nine
-		jr $ra
+	# Display newline
+	li $v0, 4
+	la $a0, newline
+	syscall 
+	
+	li $v0, 1
+	move $a0, $t6	
+	syscall
 		
-	addi $t0, $t0, 2328
-	
-	
-	
-	
-	addi $t0, $t0, 16
-	
-	lw $t0, displayAddress
-	jr $ra
-	
-leftOrRight:
-	lw $t5, 0xffff0004 
-	beq $t5, 0x6A, moveLeft
-	beq $t5, 0x6B, moveRight
-	j RUN
+	drawHundreds:
+		addi $t0, $t0, 3248
+		li $a0, 1
+		beq $t5, 0, drawZero
+		beq $t5, 1, drawOne
+		beq $t5, 2, drawTwo
+		beq $t5, 3, drawThree
+		beq $t5, 4, drawFour
+		beq $t5, 5, drawFive
+		beq $t5, 6, drawSix
+		beq $t5, 7, drawSeven
+		beq $t5, 8, drawEight
+		beq $t5, 9, drawNine
+		
+	drawOnes:
+		addi $t0, $t0, 16
+		li $a0, 0
+		beq $t6, 0, drawZero
+		beq $t6, 1, drawOne
+		beq $t6, 2, drawTwo
+		beq $t6, 3, drawThree
+		beq $t6, 4, drawFour
+		beq $t6, 5, drawFive
+		beq $t6, 6, drawSix
+		beq $t6, 7, drawSeven
+		beq $t6, 8, drawEight
+		beq $t6, 9, drawNine
 
-moveLeft:
-	addi $t0, $t0, -4
-	j RUN
-
-moveRight:
-	addi $t0, $t0, 4
-	j RUN
+	j end
+	
+	drawZero:
+		sw $t2, 0($t0)
+		sw $t2, 4($t0)
+		sw $t2, 8($t0)
+		sw $t2, 128($t0)
+		sw $t2, 136($t0)
+		sw $t2, 256($t0)
+		sw $t2, 264($t0)
+		sw $t2, 384($t0)
+		sw $t2, 392($t0)
+		sw $t2, 512($t0)
+		sw $t2, 516($t0)
+		sw $t2, 520($t0)
+		beq $a0, 1, drawOnes
+		beq $a0, 0, end	
+	drawOne:
+		sw $t2, 0($t0)
+		sw $t2, 4($t0)
+		sw $t2, 132($t0)
+		sw $t2, 260($t0)
+		sw $t2, 388($t0)
+		sw $t2, 516($t0)
+		beq $a0, 1, drawOnes
+		beq $a0, 0, end	
+	drawTwo:
+		sw $t2, 0($t0)
+		sw $t2, 4($t0)
+		sw $t2, 8($t0)
+		sw $t2, 136($t0)
+		sw $t2, 256($t0)
+		sw $t2, 260($t0)
+		sw $t2, 264($t0)
+		sw $t2, 384($t0)
+		sw $t2, 512($t0)
+		sw $t2, 516($t0)
+		sw $t2, 520($t0)
+		beq $a0, 1, drawOnes
+		beq $a0, 0, end	
+	drawThree:
+		sw $t2, 0($t0)
+		sw $t2, 4($t0)
+		sw $t2, 8($t0)
+		sw $t2, 136($t0)
+		sw $t2, 256($t0)
+		sw $t2, 260($t0)
+		sw $t2, 264($t0)
+		sw $t2, 392($t0)
+		sw $t2, 512($t0)
+		sw $t2, 516($t0)
+		sw $t2, 520($t0)
+		beq $a0, 1, drawOnes
+		beq $a0, 0, end	
+	drawFour:
+		sw $t2, 0($t0)
+		sw $t2, 8($t0)
+		sw $t2, 128($t0)
+		sw $t2, 136($t0)
+		sw $t2, 256($t0)
+		sw $t2, 260($t0)
+		sw $t2, 264($t0)
+		sw $t2, 392($t0)
+		sw $t2, 520($t0)
+		beq $a0, 1, drawOnes
+		beq $a0, 0, end	
+	drawFive:
+		sw $t2, 0($t0)
+		sw $t2, 4($t0)
+		sw $t2, 8($t0)
+		sw $t2, 128($t0)
+		sw $t2, 256($t0)
+		sw $t2, 260($t0)
+		sw $t2, 264($t0)
+		sw $t2, 392($t0)
+		sw $t2, 512($t0)
+		sw $t2, 516($t0)
+		sw $t2, 520($t0)
+		beq $a0, 1, drawOnes
+		beq $a0, 0, end	
+	drawSix:
+		sw $t2, 0($t0)
+		sw $t2, 4($t0)
+		sw $t2, 8($t0)
+		sw $t2, 128($t0)
+		sw $t2, 256($t0)
+		sw $t2, 260($t0)
+		sw $t2, 264($t0)
+		sw $t2, 384($t0)
+		sw $t2, 392($t0)
+		sw $t2, 512($t0)
+		sw $t2, 516($t0)
+		sw $t2, 520($t0)
+		beq $a0, 1, drawOnes
+		beq $a0, 0, end	
+	drawSeven:
+		sw $t2, 0($t0)
+		sw $t2, 4($t0)
+		sw $t2, 8($t0)
+		sw $t2, 128($t0)
+		sw $t2, 136($t0)
+		sw $t2, 264($t0)
+		sw $t2, 392($t0)
+		sw $t2, 520($t0)
+		beq $a0, 1, drawOnes
+		beq $a0, 0, end	
+	drawEight:
+		sw $t2, 0($t0)
+		sw $t2, 4($t0)
+		sw $t2, 8($t0)
+		sw $t2, 128($t0)
+		sw $t2, 136($t0)
+		sw $t2, 256($t0)
+		sw $t2, 260($t0)
+		sw $t2, 264($t0)
+		sw $t2, 384($t0)
+		sw $t2, 392($t0)
+		sw $t2, 512($t0)
+		sw $t2, 516($t0)
+		sw $t2, 520($t0)
+		beq $a0, 1, drawOnes
+		beq $a0, 0, end	
+	drawNine:
+		sw $t2, 0($t0)
+		sw $t2, 4($t0)
+		sw $t2, 8($t0)
+		sw $t2, 128($t0)
+		sw $t2, 136($t0)
+		sw $t2, 256($t0)
+		sw $t2, 260($t0)
+		sw $t2, 264($t0)
+		sw $t2, 392($t0)
+		sw $t2, 512($t0)
+		sw $t2, 516($t0)
+		sw $t2, 520($t0)
+		beq $a0, 1, drawOnes
+		beq $a0, 0, end		
+	end: 
+		lw $t0, displayAddress
+		jr $ra
 		 
 Exit:
 	li $v0, 10 
 	syscall
 	
-	# layout
+	# Text layout
 	sw $t2, 0($t0)
 	sw $t2, 4($t0)
 	sw $t2, 8($t0)
