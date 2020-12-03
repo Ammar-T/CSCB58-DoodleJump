@@ -59,25 +59,20 @@ main:
 	StartLoop: 
 		li $t3, 0
 				
-		li $a0, 250
-		li $a1, 200
+		li $a0, 28
 		jal createLevel
 		addi $t3, $t3, 4
 		
-		li $a0, 500
-		li $a1, 200
+		li $a0, 25
 		jal createLevel
 		addi $t3, $t3, 4
 	
-		li $a0, 500
-		li $a1, 200
+		li $a0, 17
 		jal createLevel
 		addi $t3, $t3, 4
 
-		li $a0, 750
-		li $a1, 200
+		li $a0, 10
 		jal createLevel
-		
 		
 		lw $t2, 0($t1)
 		sw $t2, 0($sp)
@@ -88,7 +83,7 @@ main:
 		
 		# Game loop
 		RUN: 		
-			blt $t9, 12, flyUp
+			blt $t9, 10, flyUp
 			flyDown:
 				jal RepaintFlyDown
 				li $a0, 128
@@ -101,11 +96,12 @@ main:
 				jal changeY
 				addi $t9, $t9, 1
 				
-				# Scroll screen up
-				ble $t0, 268465544, Scroll
+				blt $t0, 268465472, continue
+				bgt $t0, 268465600, continue
+				j Scroll
 			continue:
 				# Hit the bottom
-				bge $t0, 268470272, main
+				bge $t0, 268468248, main
 
 				# Handle left and right movement
 				lw $t8, 0xffff0000 
@@ -117,10 +113,11 @@ Scroll:
 	li $t6, 0
 	li $t4, 0
 	la $t8, levels
-		
-	# loop each pixel
+	addi $t0, $t0, 256
+	
+	# loop each level
 	loopLevels:
-		beq $t6, 4, RUN
+		beq $t6, 4, addLevelAndContinue
 		
 		# $s4 = levels[i]
 		lw $s4, 0($t8)
@@ -131,7 +128,6 @@ Scroll:
 		addi $t6, $t6, 1
 		j loopLevels
 		
-		
 	lowerLevel:
 		# load blue
 		lw $t2, 0($t1)
@@ -140,20 +136,30 @@ Scroll:
 		# load green color
 		lw $t2, 8($t1)
 		# color bottom block green
-		sw $t2, 256($s4)
+		sw $t2, 768($s4)
 
 		# increment counter and address
 		addi $s4, $s4, 4
 		addi $t4, $t4, 1
 		blt $t4, 8, lowerLevel
 		
-		# update level to new location (256 - 32 = vertical diff - horizontal shift)
-		addi $s4, $s4, 224
+		# update level to new location (768 - 32 = vertical diff - horizontal shift)
+		addi $s4, $s4, 736
 		move $t4, $s4
 		sw $t4, 0($t8)
 		
 		li $t4, 0
 		jr $ra
+	
+	addLevelAndContinue:
+		li $a0, 3
+		jal createLevel
+		addi $t3, $t3, 4
+		beq $t3, 16, resetLevelCounter
+		j continue
+		resetLevelCounter:
+			li $t3, 0
+			j continue
 	
 RepaintFlyUp:
 	# push above-block colors onto stack
@@ -195,18 +201,20 @@ changeY:
 createLevel:
 	# copy display address
 	lw $t5, displayAddress
-	move $t4, $a0
 	
-	# generate random number
+	# (5 || 13 || 22 || 27) x 2^7 = 128
+	sll $a0, $a0, 7
+	add $t5, $t5, $a0
+	
+	# generate random number for x-coordinate
 	li $v0, 42
 	li $a0, 0
+	li $a1, 24
 	syscall
-	add $a0, $a0, $t4
-	move $t6, $a0
 	
 	# make multiple of 4 (x * 2^2)
-	sll $t6, $t6, 2
-	add $t5, $t5, $t6	
+	sll $a0, $a0, 2
+	add $t5, $t5, $a0	
    	
    	# add level location to levels array
    	la $t2, levels
@@ -245,7 +253,7 @@ hitLevel:
 		li $t9, 0
 		jr $ra
 		
-clearScreen:
+clearScreen:	
 	li $t6, 0
 	lw $t2, 0($t1)
 	NotCleared:
@@ -253,7 +261,7 @@ clearScreen:
 		addi $t0, $t0, 4
 		addi $t6, $t6, 1
 		blt $t6, 1024, NotCleared
-		
+	
 	lw $t0, displayAddress
 	li $t6, 0
 	jr $ra
