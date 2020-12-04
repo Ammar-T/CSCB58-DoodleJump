@@ -32,11 +32,12 @@
 #####################################################################
 .data
 	displayAddress:		.word 0x10008000
-	levels: 		.word 0, 0, 0 # normal, normal, normal
+	levels: 		.word 0, 0, 0 
 	score: 			.word 0
-	speed:			.word 75
+	speed:			.word 75	# initial speed
+	notif:			.word 0, 0 	# timer, type of noti (wow - 0, yay- 1, woo- 2)
 	scrollGrace:		.word 1
-	colors: 		.word 0xFF3E7EAC 0xFFDB4D6A 0xFF9ABFD9, 0xFFEFF5F9 0xFF4DDBBD, 0xFFFF6347 # background, ball, level, clouds, text, score
+	colors: 		.word 0xFF3E7EAC 0xFFDB4D6A 0xFF9ABFD9, 0xFFEFF5F9 0xFF4DDBBD, 0xFFFF6347, 0xFFFAE549, 0xFFCD853F # background, ball, level, clouds, text, score, notiText, notiBackground
 	newline: 		.asciiz "\n"
 
 .globl main
@@ -136,7 +137,8 @@ main:
 			
 Scroll:
 	jal IncreaseScore
-
+	jal decrementNoti
+	
 	# if 0, cannot scroll
 	lw $t4, scrollGrace
 	beq $t4, 0, continue
@@ -213,22 +215,96 @@ IncreaseScore:
 	addi $t4, $t4, 1
 	sw $t4, score
 	
-	bge $t4, 50, increaseSpeed44
-	bge $t4, 20, increaseSpeed50
-	bge $t4, 10, increaseSpeed60
+	beq $t4, 50, increaseSpeed44
+	beq $t4, 20, increaseSpeed50
+	beq $t4, 10, increaseSpeed60
+	jr $ra
 	increaseSpeed60:
+		addi $sp, $sp, -4
+		sw $ra, 0($sp)
+		li $a0, 0
+		jal createNoti
+		lw $ra, 0($sp)
 		li $t4, 60
 		sw $t4, speed
 		jr $ra
 	increaseSpeed50:
+		addi $sp, $sp, -4
+		sw $ra, 0($sp)
+		li $a0, 1
+		jal createNoti
+		lw $ra, 0($sp)
 		li $t4, 50
 		sw $t4, speed
 		jr $ra
 	increaseSpeed44:
+		addi $sp, $sp, -4
+		sw $ra, 0($sp)
+		li $a0, 2
+		jal createNoti
+		lw $ra, 0($sp)
 		li $t4, 44
 		sw $t4, speed
-		
 	jr $ra
+	
+createNoti:
+   	la $t5, notif
+   	li $t4, 5		# noti stays on screen for 5 scrolls
+   	sw $t4, 0($t5)		
+	
+	addi $sp, $sp, -4
+	sw $ra, 0($sp)
+	
+	lw $a1, 24($t1) # set color of text to be yellow
+	beq $a0, 0, wow
+	beq $a0, 1, yay
+	beq $a0, 2, woo
+
+	wow: 
+		li $t4, 0		# save noti type as wow
+   		sw $t4, 4($t5)
+		jal wowText
+		j exit
+	yay:
+		li $t4, 1		# save noti type as yay
+   		sw $t4, 4($t5)
+		jal yayText
+		j exit
+	woo:
+		li $t4, 2		# save noti type as woo
+   		sw $t4, 4($t5)
+		jal wooText
+	exit:
+		lw $ra, 0($sp)
+		addi $sp, $sp, 4
+		jr $ra
+
+decrementNoti:
+	la $t5, notif
+	lw $t4, 0($t5) 
+	
+	bgt $t4, 0, decrement
+	jr $ra
+	
+	decrement:
+		addi $t4, $t4, -1
+		sw $t4, 0($t5)
+		
+		# has reached time limit -> clear now
+		beq $t4, 0, clearNoti
+		jr $ra
+		clearNoti:
+			addi $sp, $sp, -4
+			sw $ra, 0($sp)
+			
+			# repaint area sky blue
+			lw $a0, 0($t1)
+			jal setNotiBackground
+			
+			lw $ra, 0($sp)
+			addi $sp, $sp, 4
+			jr $ra
+	
 	
 RepaintFlyUp:
 	# push above-block colors onto stack
@@ -357,9 +433,7 @@ createLevel:
 hitLevel: 
 	la $t8, levels
 	
-	
-	
-	# get color of block below (middle unit)
+	# if block below is green (middle unit)
 	lw $t5, 4160($t0)
 	beq $t5, -6635559, resetFly
 	
@@ -367,7 +441,7 @@ hitLevel:
 	lw $t5, 4164($t0)
 	beq $t5, -6635559, resetFly
 	
-	# get color of block below (left unit)
+	# if block below is green (left unit)
 	lw $t5, 4168($t0)
 	beq $t5, -6635559, resetFly
 	
@@ -400,10 +474,9 @@ clearScreen:
 	
 	addi $sp, $sp, -4
 	sw $ra, 0($sp)
-
 	jal drawClouds
-	
 	lw $ra, 0($sp)
+	addi $sp, $sp, 4
 	
 	jr $ra
 
@@ -757,14 +830,219 @@ lostText:
 	lw $t0, displayAddress
 	jr $ra
 
+setNotiBackground:
+	lw $t4, displayAddress
+	addi $t4, $t4, 28 # shift background right
+	move $t2, $zero
+	
+	li $t6, 0
+	y:
+		li $t5, 0
+		x:	
+			add $t4, $t4, $t5
+			add $t4, $t4, $t6
+			sw $a0, 0($t4)
+			sub $t4, $t4, $t5
+			sub $t4, $t4, $t6
+			
+			addi $t5, $t5, 4
+			ble $t5, 60, x
+		addi $t6, $t6, 128
+		ble $t6, 768, y
+	
+	jr $ra
+	
 wowText:
-	# TBD
+	addi $sp, $sp, -4
+	sw $ra, 0($sp)
+	
+	lw $t4, 28($t1)
+	move $a0, $t4
+	jal setNotiBackground
+	
+	lw $ra, 0($sp)
+	addi $sp, $sp, 4
+	
+	lw $t4, displayAddress
+	move $t2, $a1 # set color of text
+	
+	addi $t4, $t4, 160
+	# w
+	sw $t2, 0($t4)
+	sw $t2, 8($t4)
+	sw $t2, 128($t4)
+	sw $t2, 136($t4)
+	sw $t2, 256($t4)
+	sw $t2, 264($t4)
+	sw $t2, 384($t4)
+	sw $t2, 388($t4)
+	sw $t2, 392($t4)
+	sw $t2, 512($t4)
+	sw $t2, 520($t4)
+	
+	# o
+	addi $t4, $t4, 16
+	sw $t2, 0($t4)
+	sw $t2, 4($t4)
+	sw $t2, 8($t4)
+	sw $t2, 128($t4)
+	sw $t2, 136($t4)
+	sw $t2, 256($t4)
+	sw $t2, 264($t4)
+	sw $t2, 384($t4)
+	sw $t2, 392($t4)
+	sw $t2, 512($t4)
+	sw $t2, 516($t4)
+	sw $t2, 520($t4)
+	
+	# w
+	addi $t4, $t4, 16
+	sw $t2, 0($t4)
+	sw $t2, 8($t4)
+	sw $t2, 128($t4)
+	sw $t2, 136($t4)
+	sw $t2, 256($t4)
+	sw $t2, 264($t4)
+	sw $t2, 384($t4)
+	sw $t2, 388($t4)
+	sw $t2, 392($t4)
+	sw $t2, 512($t4)
+	sw $t2, 520($t4)
+	
+	# !
+	addi $t4, $t4, 16
+	sw $t2, 4($t4)
+	sw $t2, 132($t4)
+	sw $t2, 260($t4)
+	sw $t2, 516($t4)
 
-coolText:
-	# TBD
+	jr $ra
+
+wooText:
+	addi $sp, $sp, -4
+	sw $ra, 0($sp)
+	
+	lw $t4, 28($t1)
+	move $a0, $t4
+	jal setNotiBackground
+	
+	lw $ra, 0($sp)
+	addi $sp, $sp, 4
+	
+	lw $t4, displayAddress
+	move $t2, $a1 # set color of text
+	
+	addi $t4, $t4, 160
+	# w
+	sw $t2, 0($t4)
+	sw $t2, 8($t4)
+	sw $t2, 128($t4)
+	sw $t2, 136($t4)
+	sw $t2, 256($t4)
+	sw $t2, 264($t4)
+	sw $t2, 384($t4)
+	sw $t2, 388($t4)
+	sw $t2, 392($t4)
+	sw $t2, 512($t4)
+	sw $t2, 520($t4)
+	
+	# o
+	addi $t4, $t4, 16
+	sw $t2, 0($t4)
+	sw $t2, 4($t4)
+	sw $t2, 8($t4)
+	sw $t2, 128($t4)
+	sw $t2, 136($t4)
+	sw $t2, 256($t4)
+	sw $t2, 264($t4)
+	sw $t2, 384($t4)
+	sw $t2, 392($t4)
+	sw $t2, 512($t4)
+	sw $t2, 516($t4)
+	sw $t2, 520($t4)
+	
+	# o
+	addi $t4, $t4, 16
+	sw $t2, 0($t4)
+	sw $t2, 4($t4)
+	sw $t2, 8($t4)
+	sw $t2, 128($t4)
+	sw $t2, 136($t4)
+	sw $t2, 256($t4)
+	sw $t2, 264($t4)
+	sw $t2, 384($t4)
+	sw $t2, 392($t4)
+	sw $t2, 512($t4)
+	sw $t2, 516($t4)
+	sw $t2, 520($t4)
+	
+	# !
+	addi $t4, $t4, 16
+	sw $t2, 4($t4)
+	sw $t2, 132($t4)
+	sw $t2, 260($t4)
+	sw $t2, 516($t4)
+
+	jr $ra
 	
 yayText:
-	# TBD
+	addi $sp, $sp, -4
+	sw $ra, 0($sp)
+	
+	lw $t4, 28($t1)
+	move $a0, $t4
+	jal setNotiBackground
+	
+	lw $ra, 0($sp)
+	addi $sp, $sp, 4
+	
+	lw $t4, displayAddress
+	move $t2, $a1 # set color of text
+	
+	addi $t4, $t4, 160
+	# y
+	sw $t2, 0($t4)
+	sw $t2, 8($t4)
+	sw $t2, 128($t4)
+	sw $t2, 136($t4)
+	sw $t2, 260($t4)
+	sw $t2, 388($t4)
+	sw $t2, 516($t4)
+	
+	# a
+	addi $t4, $t4, 16
+	sw $t2, 0($t4)
+	sw $t2, 4($t4)
+	sw $t2, 8($t4)
+	sw $t2, 128($t4)
+	sw $t2, 136($t4)
+	sw $t2, 256($t4)
+	sw $t2, 260($t4)
+	sw $t2, 264($t4)
+	sw $t2, 384($t4)
+	sw $t2, 392($t4)
+	sw $t2, 520($t4)
+	sw $t2, 512($t4)
+	sw $t2, 520($t4)
+	
+	# y
+	addi $t4, $t4, 16
+	sw $t2, 0($t4)
+	sw $t2, 8($t4)
+	sw $t2, 128($t4)
+	sw $t2, 136($t4)
+	sw $t2, 260($t4)
+	sw $t2, 388($t4)
+	sw $t2, 516($t4)
+	
+	# !
+	addi $t4, $t4, 16
+	sw $t2, 4($t4)
+	sw $t2, 132($t4)
+	sw $t2, 260($t4)
+	sw $t2, 516($t4)
+
+	jr $ra
 		
 scoreText:
 	la $t1, colors	
@@ -856,26 +1134,13 @@ scoreText:
 printScore:
 	la $t1, colors	
 	lw $t0, displayAddress
-	lw $t2, 20($t1)
+	lw $t2, 28($t1)
 	
 	li $t3, 10
 	lw $t4, score
 	div $t4, $t3
 	mflo $t5
 	mfhi $t6
-	
-	li $v0, 1
-	move $a0, $t5	
-	syscall
-		
-	# Display newline
-	li $v0, 4
-	la $a0, newline
-	syscall 
-	
-	li $v0, 1
-	move $a0, $t6	
-	syscall
 		
 	drawHundreds:
 		addi $t0, $t0, 3248
