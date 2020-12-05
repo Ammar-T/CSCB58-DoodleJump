@@ -19,7 +19,7 @@
 # Which approved additional features have been implemented?
 # (See the assignment handout for the list of additional features)
 # 1. Fancier graphics
-# 2. TBD - dynamic notifications
+# 2. Dynamic notifications
 # 3. TBD - boosting/powerups
 # ... (add more if necessary)
 #
@@ -33,9 +33,14 @@
 .data
 	displayAddress:		.word 0x10008000
 	levels: 		.word 0, 0, 0 
+	breakPlatform:		.word 0
+	breakPlatformActive:	.word 0
 	score: 			.word 0
+	jetpackGas:		.word 0
 	speed:			.word 75	# initial speed
 	notif:			.word 0, 0 	# timer, type of noti (wow - 0, yay- 1, woo- 2)
+	monsterActive:		.word -1
+	monsterLocation:	.word 0
 	scrollGrace:		.word 1
 	colors: 		.word 0xFF3E7EAC 0xFFDB4D6A 0xFF9ABFD9, 0xFFEFF5F9 0xFF4DDBBD, 0xFFFF6347, 0xFFFAE549, 0xFFCD853F # background, ball, level, clouds, text, score, notiText, notiBackground
 	newline: 		.asciiz "\n"
@@ -70,6 +75,8 @@ main:
 	initGame:
 		jal clearScreen
 		sw $zero, score
+		li $t3, 75
+		sw $t3, speed
 		lw $t5, 0xffff0004
 		beq $t5, 0x71, Exit 	 # Press Q
 		beq $t5, 0x72, StartLoop # Press R
@@ -101,10 +108,15 @@ main:
 		# Jump height limit counter (limit = 10)
 		li $t9, 0
 		li $t3, 0
-		
+				
 		# Game loop
-		RUN: 		
+		RUN: 	
+			lw $t4, jetpackGas
+			bgt $t4, 0, jetpack	
 			blt $t9, 10, flyUp
+			j flyDown
+			jetpack:
+				j Scroll
 			flyDown:
 				jal RepaintFlyDown
 				li $a0, 128
@@ -126,26 +138,43 @@ main:
 					bgt $t0, 268465344, continue
 					j Scroll
 			continue:
-				# Hit the bottom
-				bge $t0, 268468120, postGameText
+				lw $t4, score
+				li $t5, 8
+				div $t4, $t5
+				mfhi $t4
+				beq $t4, 0, checkIfAlreadyActivePlat
+				j handleLeftRight
+				checkIfAlreadyActivePlat:
+					lw $t4, breakPlatformActive
+					beq $t4, 0, createBreakPlatform
+				
+				handleLeftRight:
+					# Hit the bottom
+					bge $t0, 268468120, postGameText
 
-				# Handle left and right movement
-				lw $t8, 0xffff0000 
-				beq $t8, 1, leftOrRight
+					# Handle left and right movement
+					lw $t8, 0xffff0000 
+					beq $t8, 1, leftOrRight
 				
 				j RUN
 			
 Scroll:
 	jal IncreaseScore
 	jal decrementNoti
+	jal decrementJetpackGas
 	
 	# if 0, cannot scroll
 	lw $t4, scrollGrace
-	beq $t4, 0, continue
+	# beq $t4, 0, continue
 	# reset grace for next iterations
 	li $t4, 0
 	sw $t4, scrollGrace
 	
+	lw $t4, breakPlatformActive
+	bgt $t4, 0, scrollBreak
+	scrollBreak:
+		jal scrollBreakPlatform
+		
 	li $t6, 0
 	li $t4, 0
 	la $t8, levels
@@ -163,14 +192,30 @@ Scroll:
 		
 	lowerLevel:
 		lowerTopHalf:
-			# load blue
+			# load blue, green
 			lw $t2, 0($t1)
-			# color current blue
+			lw $t5, 8($t1)
+			
 			sw $t2, 0($s4)
-			# load green color
-			lw $t2, 8($t1)
-			# color bottom block green
-			sw $t2, 896($s4)
+			sw $t5, 128($s4)
+			sw $t2, 128($s4)
+			sw $t5, 256($s4)
+			li $v0, 32
+			li $a0, 2
+			syscall
+			sw $t2, 256($s4)
+			sw $t5, 384($s4)
+			sw $t2, 384($s4)
+			sw $t5, 512($s4)
+			sw $t2, 512($s4)
+			sw $t5, 640($s4)
+			sw $t2, 640($s4)
+			sw $t5, 768($s4)
+			li $v0, 32
+			li $a0, 2
+			syscall
+			sw $t2, 768($s4)
+			sw $t5, 896($s4)
 		
 			# increment counter and address
 			addi $s4, $s4, 4
@@ -179,18 +224,34 @@ Scroll:
 			li $t4, 0
 			addi $s4, $s4, 104
 		lowerBottomHalf:
-			# load blue
+			# load blue, green
 			lw $t2, 0($t1)
-			# color current blue
+			lw $t5, 8($t1)
+
 			sw $t2, 0($s4)
-			# load green color
-			lw $t2, 8($t1)
-			# color bottom block green
-			sw $t2, 896($s4)
+			sw $t5, 128($s4)
+			sw $t2, 128($s4)
+			sw $t5, 256($s4)
+			li $v0, 32
+			li $a0, 2
+			syscall
+			sw $t2, 256($s4)
+			sw $t5, 384($s4)
+			sw $t2, 384($s4)
+			sw $t5, 512($s4)
+			sw $t2, 512($s4)
+			sw $t5, 640($s4)
+			li $v0, 32
+			li $a0, 2
+			syscall
+			sw $t2, 640($s4)
+			sw $t5, 896($s4)
+		
 			addi $s4, $s4, 4
 			addi $t4, $t4, 1
 			blt $t4, 4, lowerBottomHalf
 		
+	
 		# update level to new location (896 - 128 - 24 = vertical diff - horizontal shift)
 		addi $s4, $s4, 744
 		move $t4, $s4
@@ -208,6 +269,8 @@ Scroll:
 		
 		resetLevelCounter:
 			li $t3, 0
+			lw $ra, 0($sp)
+			addi $sp, $sp, 4
 			j continue
 
 IncreaseScore:
@@ -215,7 +278,7 @@ IncreaseScore:
 	addi $t4, $t4, 1
 	sw $t4, score
 	
-	beq $t4, 50, increaseSpeed44
+	beq $t4, 40, increaseSpeed44
 	beq $t4, 20, increaseSpeed50
 	beq $t4, 10, increaseSpeed60
 	jr $ra
@@ -246,7 +309,8 @@ IncreaseScore:
 		li $t4, 44
 		sw $t4, speed
 	jr $ra
-	
+   	
+
 createNoti:
    	la $t5, notif
    	li $t4, 5		# noti stays on screen for 5 scrolls
@@ -279,6 +343,17 @@ createNoti:
 		addi $sp, $sp, 4
 		jr $ra
 
+decrementJetpackGas:
+	lw $t4, jetpackGas
+	bgt $t4, 0, loseGas
+	jr $ra
+	
+	loseGas:
+		addi $t4, $t4, -1
+		sw $t4, jetpackGas
+		jr $ra
+	
+	
 decrementNoti:
 	la $t5, notif
 	lw $t4, 0($t5) 
@@ -385,7 +460,60 @@ moveLeft:
 moveRight:
 	addi $t0, $t0, 4
 	j RUN
+
+createBreakPlatform:
+	li $a0, 14
+	li $a1, 28
+	jal createLevel
+	li $t5, 3
+	sw $t5, breakPlatformActive
 	
+	j RUN
+	
+scrollBreakPlatform:
+	lw $t5, breakPlatform
+	lw $t4, breakPlatformActive
+	addi $t4, $t4, -1
+	sw $t4, breakPlatformActive
+	
+	lw $t2, 0($t1)
+	sw $t2, 0($t5)
+	sw $t2, 4($t5)	
+	sw $t2, 8($t5)	
+	sw $t2, 12($t5)	
+	sw $t2, 16($t5)
+	sw $t2, 20($t5)
+	sw $t2, 24($t5)
+	sw $t2, 28($t5)
+	sw $t2, 136($t5)
+	sw $t2, 140($t5)
+	sw $t2, 144($t5)
+	sw $t2, 148($t5)
+	
+	lw $t2, 28($t1)
+	sw $t2, 896($t5)
+	sw $t2, 900($t5)	
+	sw $t2, 904($t5)	
+	sw $t2, 908($t5)	
+	sw $t2, 912($t5)
+	sw $t2, 916($t5)
+	sw $t2, 920($t5)
+	sw $t2, 924($t5)
+	sw $t2, 1032($t5)
+	sw $t2, 1036($t5)
+	sw $t2, 1040($t5)
+	sw $t2, 1044($t5)
+	
+	addi $t5, $t5, 896
+	sw $t5, breakPlatform
+	
+	bge $t5, 268468120, resetActive
+	jr $ra
+	resetActive:
+		sw $zero, breakPlatformActive
+	
+	jr $ra
+			
 createLevel:
 	# copy display address
 	lw $t5, displayAddress
@@ -406,30 +534,39 @@ createLevel:
 	sll $a0, $a0, 2
 	add $t5, $t5, $a0	
    	
-   	# add level location to levels array
-   	la $t2, levels
-   	add $t2, $t2, $t3
-   	sw $t5, 0($t2)
+	beq $t4, 8, normal
+	
+	break:
+   		sw $t5, breakPlatform
+		j drawPlat
+	normal:
+   		la $t2, levels
+   		add $t2, $t2, $t3
+   		sw $t5, 0($t2)
    	
-	# draw level
-	add $t1, $t1, $t4
-	lw $t2, 0($t1)
-	sw $t2, 0($t5)
-	sw $t2, 4($t5)	
-	sw $t2, 8($t5)	
-	sw $t2, 12($t5)	
-	sw $t2, 16($t5)
-	sw $t2, 20($t5)
-	sw $t2, 24($t5)
-	sw $t2, 28($t5)
-	sw $t2, 136($t5)
-	sw $t2, 140($t5)
-	sw $t2, 144($t5)
-	sw $t2, 148($t5)
-	sub $t1, $t1, $t4
+   	drawPlat:
+		add $t1, $t1, $t4
+		lw $t2, 0($t1)
+		sw $t2, 0($t5)
+		sw $t2, 4($t5)	
+		sw $t2, 8($t5)	
+		sw $t2, 12($t5)	
+		sw $t2, 16($t5)
+		sw $t2, 20($t5)
+		sw $t2, 24($t5)
+		sw $t2, 28($t5)
+		sw $t2, 136($t5)
+		sw $t2, 140($t5)
+		sw $t2, 144($t5)
+		sw $t2, 148($t5)
+		sub $t1, $t1, $t4
 	
 	jr $ra
-
+	
+saveNormalPlatToMem:
+	# add level location to levels array
+   	
+   	
 hitLevel: 
 	la $t8, levels
 	
@@ -445,9 +582,37 @@ hitLevel:
 	lw $t5, 4168($t0)
 	beq $t5, -6635559, resetFly
 	
+	# if block below is green (left unit)
+	lw $t5, 4168($t0)
+	beq $t5, -3308225, resetBrownPlat
+
 	jr $ra
+	resetBrownPlat:
+		lw $t5, breakPlatform
+		lw $t2, 0($t1)
+		sw $t2, 0($t5)
+		sw $t2, 4($t5)	
+		sw $t2, 8($t5)	
+		sw $t2, 12($t5)	
+		sw $t2, 16($t5)
+		sw $t2, 20($t5)
+		sw $t2, 24($t5)
+		sw $t2, 28($t5)
+		sw $t2, 136($t5)
+		sw $t2, 140($t5)
+		sw $t2, 144($t5)
+		sw $t2, 148($t5)
+		sw $zero, breakPlatformActive
+		
+		lw $t4, score
+		addi $t4, $t4, 1
+		sw $t4, score
+		jr $ra
 	
 	resetFly:	
+		# li $t4, 25
+		# sw $t4, jetpackGas
+		
 		# end scrolling grace period
 		lw $t4, scrollGrace
 		addi $t4, $t4, 1
@@ -487,7 +652,7 @@ clearScreen:
 ###############################         DRAWINGS // TEXT        ############################################# 
 ###############################         DRAWINGS // TEXT        ############################################# 
 ###############################         DRAWINGS // TEXT        ############################################# 
-
+   	
 drawClouds:
 	lw $t0, displayAddress
 	lw $t2, 12($t1)
