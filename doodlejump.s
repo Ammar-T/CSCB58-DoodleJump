@@ -20,7 +20,7 @@
 # (See the assignment handout for the list of additional features)
 # 1. Fancier graphics
 # 2. Dynamic notifications
-# 3. TBD - boosting/powerups
+# 3. Boosting/powerups
 # ... (add more if necessary)
 #
 # Link to video demonstration for final submission:
@@ -32,18 +32,18 @@
 #####################################################################
 .data
 	displayAddress:		.word 0x10008000
-	levels: 		.word 0, 0, 0 
-	breakPlatform:		.word 0
-	breakPlatformActive:	.word 0
-	score: 			.word 0
-	jetpackGas:		.word 0
-	speed:			.word 75	# initial speed
-	notif:			.word 0, 0 	# timer, type of noti (wow - 0, yay- 1, woo- 2)
-	monsterActive:		.word -1
-	monsterLocation:	.word 0
+	levels: 			.word 0, 0, 0 
+	jumpHeight:			.word 10
+	score: 				.word 0
+	jetpackGas:			.word 0
+	jetpackAvailable:	.word 0
+	jetpackActivated:	.word 0
+	jetpackLocation:	.word 0
+	speed:				.word 75	# initial speed
+	notif:				.word 0, 0 	# timer, type of noti (wow - 0, yay- 1, woo- 2)
 	scrollGrace:		.word 1
-	colors: 		.word 0xFF3E7EAC 0xFFDB4D6A 0xFF9ABFD9, 0xFFEFF5F9 0xFF4DDBBD, 0xFFFF6347, 0xFFFAE549, 0xFFCD853F # background, ball, level, clouds, text, score, notiText, notiBackground
-	newline: 		.asciiz "\n"
+	colors: 			.word 0xFF3E7EAC 0xFFDB4D6A 0xFF9ABFD9, 0xFFEFF5F9 0xFF4DDBBD, 0xFFFF6347, 0xFFFAE549, 0xFFCD853F # background, ball, level, clouds, text, score, notiText, notiBackground
+	newline: 			.asciiz "\n"
 
 .globl main
 .text
@@ -75,7 +75,13 @@ main:
 	initGame:
 		jal clearScreen
 		sw $zero, score
+		sw $zero, jetpackAvailable
+		sw $zero, jetpackActivated
+		sw $zero, jetpackLocation
+		sw $zero, score
 		li $t3, 75
+		sw $t3, speed
+		li $t3, 10
 		sw $t3, speed
 		lw $t5, 0xffff0004
 		beq $t5, 0x71, Exit 	 # Press Q
@@ -113,7 +119,8 @@ main:
 		RUN: 	
 			lw $t4, jetpackGas
 			bgt $t4, 0, jetpack	
-			blt $t9, 10, flyUp
+			lw $t4, jumpHeight
+			blt $t9, $t4, flyUp
 			j flyDown
 			jetpack:
 				j Scroll
@@ -138,15 +145,14 @@ main:
 					bgt $t0, 268465344, continue
 					j Scroll
 			continue:
-				lw $t4, score
-				li $t5, 8
-				div $t4, $t5
-				mfhi $t4
-				beq $t4, 0, checkIfAlreadyActivePlat
+				# update status once jetpack ends
+				lw $t4, jetpackGas
+				beq $t4, 0, updateJetpackStatus
 				j handleLeftRight
-				checkIfAlreadyActivePlat:
-					lw $t4, breakPlatformActive
-					beq $t4, 0, createBreakPlatform
+				updateJetpackStatus:
+					sw $zero, jetpackActivated
+
+				jal hitJetpack
 				
 				handleLeftRight:
 					# Hit the bottom
@@ -163,21 +169,28 @@ Scroll:
 	jal decrementNoti
 	jal decrementJetpackGas
 	
-	# if 0, cannot scroll
-	lw $t4, scrollGrace
-	# beq $t4, 0, continue
-	# reset grace for next iterations
-	li $t4, 0
-	sw $t4, scrollGrace
+	lw $t4, jetpackActivated
+	beq $t4, 0, useScrollGracePeriod
+	j jetpackOn
 	
-	lw $t4, breakPlatformActive
-	bgt $t4, 0, scrollBreak
-	scrollBreak:
-		jal scrollBreakPlatform
+	useScrollGracePeriod:
+		# if 0, cannot scroll
+		lw $t4, scrollGrace
+		beq $t4, 0, continue
+		# reset grace for next iterations
+		li $t4, 0
+		sw $t4, scrollGrace
+		j init
+	
+	jetpackOn:
+		jal RepaintFlyUp
+		li $a0, -128
+		jal changeY
 		
-	li $t6, 0
-	li $t4, 0
-	la $t8, levels
+	init:	
+		li $t6, 0
+		li $t4, 0
+		la $t8, levels
 
 	loopLevels:
 		beq $t6, 3, addLevelAndContinue
@@ -260,7 +273,15 @@ Scroll:
 		li $t4, 0
 		jr $ra
 	
-	addLevelAndContinue:	
+	addLevelAndContinue:
+		lw $t4, jetpackAvailable # not if using jetpack but if its on the screen somewhere
+		beq $t4, 1, moveJetpack
+		lw $t4, jetpackActivated
+		beq $t4, 1, moveJetpack
+		j not
+		moveJetpack:
+			jal moveJetpackDown
+		not:
 		li $a0, 11
 		li $a1, 8
 		jal createLevel
@@ -278,7 +299,7 @@ IncreaseScore:
 	addi $t4, $t4, 1
 	sw $t4, score
 	
-	beq $t4, 40, increaseSpeed44
+	beq $t4, 40, increaseSpeed45
 	beq $t4, 20, increaseSpeed50
 	beq $t4, 10, increaseSpeed60
 	jr $ra
@@ -300,13 +321,15 @@ IncreaseScore:
 		li $t4, 50
 		sw $t4, speed
 		jr $ra
-	increaseSpeed44:
+	increaseSpeed45:
+		li $t4, 11
+		sw $t4, jumpHeight
 		addi $sp, $sp, -4
 		sw $ra, 0($sp)
 		li $a0, 2
 		jal createNoti
 		lw $ra, 0($sp)
-		li $t4, 44
+		li $t4, 45
 		sw $t4, speed
 	jr $ra
    	
@@ -461,59 +484,43 @@ moveRight:
 	addi $t0, $t0, 4
 	j RUN
 
-createBreakPlatform:
-	li $a0, 14
-	li $a1, 28
-	jal createLevel
-	li $t5, 3
-	sw $t5, breakPlatformActive
+moveJetpackDown:
+	lw $t5, jetpackLocation
 	
-	j RUN
-	
-scrollBreakPlatform:
-	lw $t5, breakPlatform
-	lw $t4, breakPlatformActive
-	addi $t4, $t4, -1
-	sw $t4, breakPlatformActive
-	
-	lw $t2, 0($t1)
-	sw $t2, 0($t5)
-	sw $t2, 4($t5)	
-	sw $t2, 8($t5)	
-	sw $t2, 12($t5)	
-	sw $t2, 16($t5)
-	sw $t2, 20($t5)
-	sw $t2, 24($t5)
-	sw $t2, 28($t5)
-	sw $t2, 136($t5)
-	sw $t2, 140($t5)
-	sw $t2, 144($t5)
-	sw $t2, 148($t5)
-	
-	lw $t2, 28($t1)
-	sw $t2, 896($t5)
-	sw $t2, 900($t5)	
-	sw $t2, 904($t5)	
-	sw $t2, 908($t5)	
-	sw $t2, 912($t5)
-	sw $t2, 916($t5)
-	sw $t2, 920($t5)
-	sw $t2, 924($t5)
-	sw $t2, 1032($t5)
-	sw $t2, 1036($t5)
-	sw $t2, 1040($t5)
-	sw $t2, 1044($t5)
-	
+	lw $t2, 0($t1)  # blue
+   	sw $t2, -376($t5) 
+   	sw $t2, -248($t5)
+   	sw $t2, -120($t5)
+   	sw $t2, -116($t5)
+   	sw $t2, -372($t5)
+   	sw $t2, -368($t5)
+   	sw $t2, -240($t5)
+   	sw $t2, -112($t5)
+   	sw $t2, -244($t5)
+   	
 	addi $t5, $t5, 896
-	sw $t5, breakPlatform
+	lw $t2, 24($t1)  # blue
+   	sw $t2, -376($t5) 
+   	sw $t2, -248($t5)
+   	sw $t2, -120($t5)
+   	sw $t2, -116($t5)
+   	lw $t2, 4($t1)  # red
+   	sw $t2, -372($t5)
+   	sw $t2, -368($t5)
+   	sw $t2, -240($t5)
+   	sw $t2, -112($t5)
+   	lw $t2, 12($t1) # white
+   	sw $t2, -244($t5)
 	
-	bge $t5, 268468120, resetActive
+	sw $t5, jetpackLocation
+   		
+	bge $t0, 268468120, jetpackGone
 	jr $ra
-	resetActive:
-		sw $zero, breakPlatformActive
+	jetpackGone:
+		sw $zero, jetpackAvailable
 	
 	jr $ra
-			
+	
 createLevel:
 	# copy display address
 	lw $t5, displayAddress
@@ -534,16 +541,40 @@ createLevel:
 	sll $a0, $a0, 2
 	add $t5, $t5, $a0	
    	
-	beq $t4, 8, normal
-	
-	break:
-   		sw $t5, breakPlatform
-		j drawPlat
-	normal:
-   		la $t2, levels
-   		add $t2, $t2, $t3
-   		sw $t5, 0($t2)
+   	la $t2, levels
+   	add $t2, $t2, $t3
+   	sw $t5, 0($t2)
    	
+   	lw $t2, score 
+   	beq $t2, 10, drawJetpack
+   	beq $t2, 45, drawJetpack
+   	beq $t2, 90, drawJetpack
+   	j drawPlat
+   	
+   	drawJetpack:
+   		lw $t2, jetpackAvailable
+   		beq $t2, 1, drawPlat
+   		
+   		li $t2, 1
+   		sw $t2, jetpackAvailable
+   		
+   		lw $t2, 24($t1)  # blue
+   		sw $t2, -376($t5) 
+   		sw $t2, -248($t5)
+   		sw $t2, -120($t5)
+   		sw $t2, -116($t5)
+   		
+   		lw $t2, 4($t1)  # red
+   		sw $t2, -372($t5)
+   		sw $t2, -368($t5)
+   		sw $t2, -240($t5)
+   		sw $t2, -112($t5)
+   		
+   		lw $t2, 12($t1) # white
+   		sw $t2, -244($t5)
+   	
+   		sw $t5, jetpackLocation
+   		
    	drawPlat:
 		add $t1, $t1, $t4
 		lw $t2, 0($t1)
@@ -562,11 +593,34 @@ createLevel:
 		sub $t1, $t1, $t4
 	
 	jr $ra
+   
+hitJetpack:
+	lw $t4, jetpackLocation
+	addi $t4, $t4, -376
 	
-saveNormalPlatToMem:
-	# add level location to levels array
-   	
-   	
+	# if block below is JETPACK (middle unit)
+	la $t5, 4160($t0)
+	beq $t5, $t4, activateJet
+	
+	# if block below is JETPACK (right unit)
+	la $t5, 4164($t0)
+	beq $t5, $t4, activateJet
+	
+	# if block below is JETPACK (left unit)
+	la $t5, 4168($t0)
+	beq $t5, $t4, activateJet
+	
+	addi $t4, $t4, 376
+	jr $ra
+	
+	activateJet:
+		li $t4, 1
+		sw $t4, jetpackActivated
+		sw $zero, jetpackAvailable
+		li $t4, 25
+		sw $t4, jetpackGas
+		jr $ra
+	
 hitLevel: 
 	la $t8, levels
 	
@@ -581,38 +635,9 @@ hitLevel:
 	# if block below is green (left unit)
 	lw $t5, 4168($t0)
 	beq $t5, -6635559, resetFly
-	
-	# if block below is green (left unit)
-	lw $t5, 4168($t0)
-	beq $t5, -3308225, resetBrownPlat
 
 	jr $ra
-	resetBrownPlat:
-		lw $t5, breakPlatform
-		lw $t2, 0($t1)
-		sw $t2, 0($t5)
-		sw $t2, 4($t5)	
-		sw $t2, 8($t5)	
-		sw $t2, 12($t5)	
-		sw $t2, 16($t5)
-		sw $t2, 20($t5)
-		sw $t2, 24($t5)
-		sw $t2, 28($t5)
-		sw $t2, 136($t5)
-		sw $t2, 140($t5)
-		sw $t2, 144($t5)
-		sw $t2, 148($t5)
-		sw $zero, breakPlatformActive
-		
-		lw $t4, score
-		addi $t4, $t4, 1
-		sw $t4, score
-		jr $ra
-	
 	resetFly:	
-		# li $t4, 25
-		# sw $t4, jetpackGas
-		
 		# end scrolling grace period
 		lw $t4, scrollGrace
 		addi $t4, $t4, 1
