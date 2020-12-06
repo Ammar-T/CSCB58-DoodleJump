@@ -32,13 +32,15 @@
 #####################################################################
 .data
 	displayAddress:		.word 0x10008000
-	levels: 			.word 0, 0, 0 
+	gameActive:		.word 0
+	platforms: 			.word 0, 0, 0 
 	jumpHeight:			.word 10
 	score: 				.word 0
-	jetpackGas:			.word 0
-	jetpackAvailable:	.word 0
-	jetpackActivated:	.word 0
-	jetpackLocation:	.word 0
+	boostFuel:			.word 0
+	boostAvailable:	.word 0
+	boostActivated:	.word 0
+	boostLocation:	.word 0
+	boostType:		.word 0
 	speed:				.word 75	# initial speed
 	notif:				.word 0, 0 	# timer, type of noti (wow - 0, yay- 1, woo- 2)
 	scrollGrace:		.word 1
@@ -57,6 +59,7 @@ main:
 		j signalAwait
 		
 	postGameText:
+		sw $zero, gameActive
 		li $a0, 0
 		jal clearScreen
 		jal lostText
@@ -67,22 +70,22 @@ main:
 	signalAwait:
 		lw $t0, displayAddress	
 		la $t1, colors	
-		
 		lw $t8, 0xffff0000 
 		beq $t8, 1, initGame
 		j signalAwait
 
 	initGame:
 		jal clearScreen
+		# Reset global vars to original values for restart
 		sw $zero, score
-		sw $zero, jetpackAvailable
-		sw $zero, jetpackActivated
-		sw $zero, jetpackLocation
+		sw $zero, boostAvailable
+		sw $zero, boostActivated
+		sw $zero, boostLocation
 		sw $zero, score
 		li $t3, 75
 		sw $t3, speed
 		li $t3, 10
-		sw $t3, speed
+		sw $t3, jumpHeight
 		lw $t5, 0xffff0004
 		beq $t5, 0x71, Exit 	 # Press Q
 		beq $t5, 0x72, StartLoop # Press R
@@ -90,22 +93,25 @@ main:
 		j main
 
 	StartLoop: 
+		li $t3, 1
+		sw $t3, gameActive
 		li $t3, 0
 		
+		# create first 3 platforms
 		# a0 - height of level, a1 - color of level
-		li $a1, 8
 		li $a0, 27
-		jal createLevel
-		addi $t3, $t3, 4
-	
 		li $a1, 8
+		jal createPlatform
+		addi $t3, $t3, 4
+
 		li $a0, 20
-		jal createLevel
+		li $a1, 8
+		jal createPlatform
 		addi $t3, $t3, 4
 		
-		li $a1, 8
 		li $a0, 13
-		jal createLevel
+		li $a1, 8
+		jal createPlatform
 		
 		# add colors to stack
 		lw $t2, 0($t1)
@@ -117,62 +123,81 @@ main:
 				
 		# Game loop
 		RUN: 	
-			lw $t4, jetpackGas
-			bgt $t4, 0, jetpack	
+			jal printScore
+				
+			# if there is fuel, then use the boost (jetpack or spring)
+			lw $t4, boostFuel
+			bgt $t4, 0, useBoost
+
+			# if jump height isn't reached, keep flying up, else fly down
 			lw $t4, jumpHeight
 			blt $t9, $t4, flyUp
 			j flyDown
-			jetpack:
+
+			useBoost:
 				j Scroll
 			flyDown:
+				# before flying to next block, push it's colors so you can pop and repaint later
 				jal RepaintFlyDown
 				li $a0, 128
 				jal changeY
+				# check if doodle hit any boost
+				jal hitBoost
 				jal hitLevel
 				j continue
-			flyUp:	
+			flyUp:
+				# before flying to next block, push it's colors so you can pop and repaint later
 				jal RepaintFlyUp
 				li $a0, -128
 				jal changeY
+				# check if doodle hit any boost
+				jal hitBoost
+				# increment number of "flyUp" to keep track of jumpHeight
 				addi $t9, $t9, 1
 				
+				# if doodle is in this range, the screen will be scrolled
 				blt $t0, 268465728, scrollRange2
 				bgt $t0, 268465856, scrollRange2
 				j Scroll
 				
+				# this range is slightly higher up on the screen
 				scrollRange2:
+					# if doodle is in this range, the screen will be scrolled
 					blt $t0, 268465216, continue
 					bgt $t0, 268465344, continue
 					j Scroll
 			continue:
-				# update status once jetpack ends
-				lw $t4, jetpackGas
-				beq $t4, 0, updateJetpackStatus
+				# once fuel ends update boostActivated variable
+				lw $t4, boostFuel
+				beq $t4, 0, updateBoostStatus
 				j handleLeftRight
-				updateJetpackStatus:
-					sw $zero, jetpackActivated
-
-				jal hitJetpack
+				updateBoostStatus:
+					sw $zero, boostActivated
 				
 				handleLeftRight:
 					# Hit the bottom
 					bge $t0, 268468120, postGameText
 
-					# Handle left and right movement
+					# Handle left and right movement input
 					lw $t8, 0xffff0000 
 					beq $t8, 1, leftOrRight
 				
 				j RUN
 			
 Scroll:
-	jal IncreaseScore
+	# Increase score by 1, speed up doodle, show noti if hit certain score
+	jal UpdateDifficulty
+	# Decrease notification time on screen by 1 per scroll
 	jal decrementNoti
-	jal decrementJetpackGas
+	# Decrease boost fuel by 1 per scroll
+	jal decrementboostFuel
 	
-	lw $t4, jetpackActivated
+	# No grace period if boosting
+	lw $t4, boostActivated
 	beq $t4, 0, useScrollGracePeriod
-	j jetpackOn
+	j boostActive
 	
+	# reduce excessive scrolling
 	useScrollGracePeriod:
 		# if 0, cannot scroll
 		lw $t4, scrollGrace
@@ -182,28 +207,42 @@ Scroll:
 		sw $t4, scrollGrace
 		j init
 	
-	jetpackOn:
+	# move doodler up while boosting
+	boostActive:
 		jal RepaintFlyUp
-		li $a0, -128
-		jal changeY
+		lw $t4, boostType
+		beq $t0, 0, springBoostDoodlerUp
+		j jetpackBoostDoodlerUp
+		springBoostDoodlerUp:
+			li $a0, -1024
+			j moveDoodlerUp
+		jetpackBoostDoodlerUp:
+			li $a0, -128
+		moveDoodlerUp:
+			jal changeY
 		
 	init:	
 		li $t6, 0
 		li $t4, 0
-		la $t8, levels
+		la $t8, platforms
 
-	loopLevels:
+	# loop over all platforms and move them down
+	loopPlatforms:
+		# done moving them down, so create a new one on top of screen
 		beq $t6, 3, addLevelAndContinue
 		
+		# load next platform and move it down
 		lw $s4, 0($t8)
 		jal lowerLevel
 		
-		# add 4 per iteration
+		# add 4 per iteration, to move to next platform
 		addi $t8, $t8, 4 
+		# counter variable tracking how many platforms have been moved 
 		addi $t6, $t6, 1
-		j loopLevels
+		j loopPlatforms
 		
 	lowerLevel:
+		# lower upper blocks of platform
 		lowerTopHalf:
 			# load blue, green
 			lw $t2, 0($t1)
@@ -236,6 +275,7 @@ Scroll:
 			blt $t4, 8, lowerTopHalf
 			li $t4, 0
 			addi $s4, $s4, 104
+		# lower upper blocks of platforms
 		lowerBottomHalf:
 			# load blue, green
 			lw $t2, 0($t1)
@@ -274,27 +314,34 @@ Scroll:
 		jr $ra
 	
 	addLevelAndContinue:
-		lw $t4, jetpackAvailable # not if using jetpack but if its on the screen somewhere
-		beq $t4, 1, moveJetpack
-		lw $t4, jetpackActivated
-		beq $t4, 1, moveJetpack
-		j not
-		moveJetpack:
-			jal moveJetpackDown
-		not:
-		li $a0, 11
-		li $a1, 8
-		jal createLevel
-		addi $t3, $t3, 4
-		ble $t3, 8, continue
-		
-		resetLevelCounter:
+		lw $t4, boostAvailable # not if using jetpack but if its on the screen somewhere
+		beq $t4, 1, moveBoost
+		lw $t4, boostActivated # if using jetpack, still need to move it down
+		beq $t4, 1, moveBoost
+		j addPlatform
+		moveBoost:
+			lw $t4, boostType
+			beq $t4, 0, spring
+			beq $t4, 1, rocket
+			j addPlatform
+			spring:	
+				jal moveSpringDown
+				j addPlatform
+			rocket:
+				jal moveJetpackDown
+		addPlatform:
+			li $a0, 11
+			li $a1, 8
+			jal createPlatform
+			addi $t3, $t3, 4
+			ble $t3, 8, continue
+		updatePlatformCounter:
 			li $t3, 0
 			lw $ra, 0($sp)
 			addi $sp, $sp, 4
 			j continue
 
-IncreaseScore:
+UpdateDifficulty:
 	lw $t4, score
 	addi $t4, $t4, 1
 	sw $t4, score
@@ -309,6 +356,7 @@ IncreaseScore:
 		li $a0, 0
 		jal createNoti
 		lw $ra, 0($sp)
+
 		li $t4, 60
 		sw $t4, speed
 		jr $ra
@@ -318,17 +366,20 @@ IncreaseScore:
 		li $a0, 1
 		jal createNoti
 		lw $ra, 0($sp)
+
 		li $t4, 50
 		sw $t4, speed
 		jr $ra
 	increaseSpeed45:
 		li $t4, 11
 		sw $t4, jumpHeight
+
 		addi $sp, $sp, -4
 		sw $ra, 0($sp)
 		li $a0, 2
 		jal createNoti
 		lw $ra, 0($sp)
+
 		li $t4, 45
 		sw $t4, speed
 	jr $ra
@@ -348,34 +399,27 @@ createNoti:
 	beq $a0, 2, woo
 
 	wow: 
-		li $t4, 0		# save noti type as wow
-   		sw $t4, 4($t5)
 		jal wowText
 		j exit
 	yay:
-		li $t4, 1		# save noti type as yay
-   		sw $t4, 4($t5)
 		jal yayText
 		j exit
 	woo:
-		li $t4, 2		# save noti type as woo
-   		sw $t4, 4($t5)
 		jal wooText
 	exit:
 		lw $ra, 0($sp)
 		addi $sp, $sp, 4
 		jr $ra
 
-decrementJetpackGas:
-	lw $t4, jetpackGas
-	bgt $t4, 0, loseGas
+decrementboostFuel:
+	lw $t4, boostFuel
+	bgt $t4, 0, loseFuel
 	jr $ra
 	
-	loseGas:
+	loseFuel:
 		addi $t4, $t4, -1
-		sw $t4, jetpackGas
+		sw $t4, boostFuel
 		jr $ra
-	
 	
 decrementNoti:
 	la $t5, notif
@@ -402,7 +446,6 @@ decrementNoti:
 			lw $ra, 0($sp)
 			addi $sp, $sp, 4
 			jr $ra
-	
 	
 RepaintFlyUp:
 	# push above-block colors onto stack
@@ -484,10 +527,47 @@ moveRight:
 	addi $t0, $t0, 4
 	j RUN
 
-moveJetpackDown:
-	lw $t5, jetpackLocation
+moveSpringDown:
+	lw $t5, boostLocation
 	
-	lw $t2, 0($t1)  # blue
+	# color original area sky blue
+	lw $t2, 0($t1)  
+   	sw $t2, -376($t5) 
+   	sw $t2, -248($t5)
+   	sw $t2, -120($t5)
+   	sw $t2, -116($t5)
+   	sw $t2, -372($t5)
+   	sw $t2, -368($t5)
+   	sw $t2, -240($t5)
+   	sw $t2, -112($t5)
+   	sw $t2, -244($t5)
+   
+	# color area below matching spring shape
+	addi $t5, $t5, 896
+	lw $t2, 12($t1) 
+   	sw $t2, -376($t5) 
+   	sw $t2, -248($t5)
+   	sw $t2, -120($t5)
+   	sw $t2, -116($t5)
+   	sw $t2, -372($t5)
+   	sw $t2, -240($t5)
+   	sw $t2, -112($t5)
+
+	sw $t5, boostLocation
+   		
+	bge $t0, 268468120, springGone
+	jr $ra
+	springGone:
+		sw $zero, boostAvailable
+	
+	jr $ra
+
+
+moveJetpackDown:
+	lw $t5, boostLocation
+	
+	# color original area sky blue
+	lw $t2, 0($t1)  
    	sw $t2, -376($t5) 
    	sw $t2, -248($t5)
    	sw $t2, -120($t5)
@@ -498,6 +578,7 @@ moveJetpackDown:
    	sw $t2, -112($t5)
    	sw $t2, -244($t5)
    	
+	# color area below matching spring shape
 	addi $t5, $t5, 896
 	lw $t2, 24($t1)  # blue
    	sw $t2, -376($t5) 
@@ -512,22 +593,22 @@ moveJetpackDown:
    	lw $t2, 12($t1) # white
    	sw $t2, -244($t5)
 	
-	sw $t5, jetpackLocation
+	sw $t5, boostLocation
    		
 	bge $t0, 268468120, jetpackGone
 	jr $ra
 	jetpackGone:
-		sw $zero, jetpackAvailable
+		sw $zero, boostAvailable
 	
 	jr $ra
 	
-createLevel:
+createPlatform:
 	# copy display address
 	lw $t5, displayAddress
 	# init which color to make level
 	move $t4, $a1
 	
-	# 2^7 = 128
+	# y * 2^7 = 128
 	sll $a0, $a0, 7
 	add $t5, $t5, $a0
 	
@@ -541,40 +622,19 @@ createLevel:
 	sll $a0, $a0, 2
 	add $t5, $t5, $a0	
    	
-   	la $t2, levels
+	# update platform location in memory
+   	la $t2, platforms
    	add $t2, $t2, $t3
    	sw $t5, 0($t2)
    	
+	# add boosts depending on score
    	lw $t2, score 
+   	beq $t2, 3, drawSpring
+   	beq $t2, 30, drawSpring
    	beq $t2, 10, drawJetpack
    	beq $t2, 45, drawJetpack
    	beq $t2, 90, drawJetpack
-   	j drawPlat
-   	
-   	drawJetpack:
-   		lw $t2, jetpackAvailable
-   		beq $t2, 1, drawPlat
-   		
-   		li $t2, 1
-   		sw $t2, jetpackAvailable
-   		
-   		lw $t2, 24($t1)  # blue
-   		sw $t2, -376($t5) 
-   		sw $t2, -248($t5)
-   		sw $t2, -120($t5)
-   		sw $t2, -116($t5)
-   		
-   		lw $t2, 4($t1)  # red
-   		sw $t2, -372($t5)
-   		sw $t2, -368($t5)
-   		sw $t2, -240($t5)
-   		sw $t2, -112($t5)
-   		
-   		lw $t2, 12($t1) # white
-   		sw $t2, -244($t5)
-   	
-   		sw $t5, jetpackLocation
-   		
+
    	drawPlat:
 		add $t1, $t1, $t4
 		lw $t2, 0($t1)
@@ -594,35 +654,61 @@ createLevel:
 	
 	jr $ra
    
-hitJetpack:
-	lw $t4, jetpackLocation
+hitBoost:
+	lw $t4, boostLocation
 	addi $t4, $t4, -376
 	
-	# if block below is JETPACK (middle unit)
-	la $t5, 4160($t0)
-	beq $t5, $t4, activateJet
+	li $t7, 0
+	checkEachBlock:
+		li $t6, 0
+		travX:
+			# block below is boost
+			la $t5, 4160($t0)
+			beq $t5, $t4, activateBoost
+			la $t5, 4164($t0)
+			beq $t5, $t4, activateBoost
+			la $t5, 4168($t0)
+			beq $t5, $t4, activateBoost
 	
-	# if block below is JETPACK (right unit)
-	la $t5, 4164($t0)
-	beq $t5, $t4, activateJet
+			# block above is boost
+			la $t5, 3904($t0)
+			beq $t5, $t4, activateBoost
+			la $t5, 3908($t0)
+			beq $t5, $t4, activateBoost
+			la $t5, 3912($t0)
+			beq $t5, $t4, activateBoost
+			
+			addi $t6, $t6, 1
+			addi $t4, $t4, 4
+			blt $t6, 3, travX
+		addi $t4, $t4, 120
+		addi $t7, $t7, 1
+		blt $t7, 3, checkEachBlock
+		jr $ra
 	
-	# if block below is JETPACK (left unit)
-	la $t5, 4168($t0)
-	beq $t5, $t4, activateJet
-	
-	addi $t4, $t4, 376
-	jr $ra
-	
-	activateJet:
+	activateBoost:
 		li $t4, 1
-		sw $t4, jetpackActivated
-		sw $zero, jetpackAvailable
-		li $t4, 25
-		sw $t4, jetpackGas
+		sw $t4, boostActivated
+		sw $zero, boostAvailable
+
+		# run boost depending on which type doodle hit (spring or jetpack)
+		lw $t4, boostType
+		beq $t4, 0, springBoost
+		beq $t4, 1, jetBoost
+
+		springBoost:
+			# spring lasts for 3 scrolls
+			li $t4, 7
+			j addFuel
+		jetBoost:
+			# jetpack lasts for 22 scrolls
+			li $t4, 22
+		addFuel:
+			sw $t4, boostFuel
 		jr $ra
 	
 hitLevel: 
-	la $t8, levels
+	la $t8, platforms
 	
 	# if block below is green (middle unit)
 	lw $t5, 4160($t0)
@@ -677,7 +763,53 @@ clearScreen:
 ###############################         DRAWINGS // TEXT        ############################################# 
 ###############################         DRAWINGS // TEXT        ############################################# 
 ###############################         DRAWINGS // TEXT        ############################################# 
-   	
+
+drawJetpack:
+   		lw $t2, boostAvailable
+   		beq $t2, 1, drawPlat
+   		
+   		li $t2, 1
+   		sw $t2, boostAvailable
+   		
+   		lw $t2, 24($t1)  # blue
+   		sw $t2, -376($t5) 
+   		sw $t2, -248($t5)
+   		sw $t2, -120($t5)
+   		sw $t2, -116($t5)
+   		
+   		lw $t2, 4($t1)  # red
+   		sw $t2, -372($t5)
+   		sw $t2, -368($t5)
+   		sw $t2, -240($t5)
+   		sw $t2, -112($t5)
+   		
+   		lw $t2, 12($t1) # white
+   		sw $t2, -244($t5)
+   		
+   		li $t2, 1 # 1 - jetpack
+   		sw $t2, boostType
+   		sw $t5, boostLocation
+		j drawPlat
+
+drawSpring:
+   		lw $t2, boostAvailable
+   		beq $t2, 1, drawPlat
+   		
+   		li $t2, 1
+   		sw $t2, boostAvailable
+   		
+   		lw $t2, 12($t1) # white
+   		sw $t2, -376($t5) 
+   		sw $t2, -248($t5)
+   		sw $t2, -120($t5)
+   		sw $t2, -116($t5)
+   		sw $t2, -372($t5)
+   		sw $t2, -240($t5)
+   		sw $t2, -112($t5)
+   		sw $t5, boostLocation
+   		sw $zero, boostType # 0 - spring
+   		j drawPlat
+
 drawClouds:
 	lw $t0, displayAddress
 	lw $t2, 12($t1)
@@ -1323,17 +1455,33 @@ scoreText:
 	
 printScore:
 	la $t1, colors	
-	lw $t0, displayAddress
-	lw $t2, 28($t1)
+	lw $t8, displayAddress
 	
-	li $t3, 10
+	li $t2, 10
 	lw $t4, score
-	div $t4, $t3
+	div $t4, $t2
 	mflo $t5
 	mfhi $t6
+	
+	lw $t2, 28($t1)
+	lw $t4, gameActive
+	beq $t4, 1, moveToLeft
+	moveToLeft:
+		li $t7, 3296
+		j drawHundreds
+	moveToMiddle:
+		li $t7, 3248
 		
 	drawHundreds:
-		addi $t0, $t0, 3248
+		add $t8, $t8, $t7
+		
+		move $a1, $t8
+		addi $sp, $sp, -4
+		sw $ra, 0($sp)
+		jal clearScore
+		lw $ra, 0($sp)
+		addi $sp, $sp, 4
+		
 		li $a0, 1
 		beq $t5, 0, drawZero
 		beq $t5, 1, drawOne
@@ -1347,7 +1495,7 @@ printScore:
 		beq $t5, 9, drawNine
 		
 	drawOnes:
-		addi $t0, $t0, 16
+		addi $t8, $t8, 16
 		li $a0, 0
 		beq $t6, 0, drawZero
 		beq $t6, 1, drawOne
@@ -1363,144 +1511,184 @@ printScore:
 	j end
 	
 	drawZero:
-		sw $t2, 0($t0)
-		sw $t2, 4($t0)
-		sw $t2, 8($t0)
-		sw $t2, 128($t0)
-		sw $t2, 136($t0)
-		sw $t2, 256($t0)
-		sw $t2, 264($t0)
-		sw $t2, 384($t0)
-		sw $t2, 392($t0)
-		sw $t2, 512($t0)
-		sw $t2, 516($t0)
-		sw $t2, 520($t0)
+		sw $t2, 0($t8)
+		sw $t2, 4($t8)
+		sw $t2, 8($t8)
+		sw $t2, 128($t8)
+		sw $t2, 136($t8)
+		sw $t2, 256($t8)
+		sw $t2, 264($t8)
+		sw $t2, 384($t8)
+		sw $t2, 392($t8)
+		sw $t2, 512($t8)
+		sw $t2, 516($t8)
+		sw $t2, 520($t8)
 		beq $a0, 1, drawOnes
 		beq $a0, 0, end	
 	drawOne:
-		sw $t2, 0($t0)
-		sw $t2, 4($t0)
-		sw $t2, 132($t0)
-		sw $t2, 260($t0)
-		sw $t2, 388($t0)
-		sw $t2, 516($t0)
+		sw $t2, 0($t8)
+		sw $t2, 4($t8)
+		sw $t2, 132($t8)
+		sw $t2, 260($t8)
+		sw $t2, 388($t8)
+		sw $t2, 516($t8)
 		beq $a0, 1, drawOnes
 		beq $a0, 0, end	
 	drawTwo:
-		sw $t2, 0($t0)
-		sw $t2, 4($t0)
-		sw $t2, 8($t0)
-		sw $t2, 136($t0)
-		sw $t2, 256($t0)
-		sw $t2, 260($t0)
-		sw $t2, 264($t0)
-		sw $t2, 384($t0)
-		sw $t2, 512($t0)
-		sw $t2, 516($t0)
-		sw $t2, 520($t0)
+		sw $t2, 0($t8)
+		sw $t2, 4($t8)
+		sw $t2, 8($t8)
+		sw $t2, 136($t8)
+		sw $t2, 256($t8)
+		sw $t2, 260($t8)
+		sw $t2, 264($t8)
+		sw $t2, 384($t8)
+		sw $t2, 512($t8)
+		sw $t2, 516($t8)
+		sw $t2, 520($t8)
 		beq $a0, 1, drawOnes
 		beq $a0, 0, end	
 	drawThree:
-		sw $t2, 0($t0)
-		sw $t2, 4($t0)
-		sw $t2, 8($t0)
-		sw $t2, 136($t0)
-		sw $t2, 256($t0)
-		sw $t2, 260($t0)
-		sw $t2, 264($t0)
-		sw $t2, 392($t0)
-		sw $t2, 512($t0)
-		sw $t2, 516($t0)
-		sw $t2, 520($t0)
+		sw $t2, 0($t8)
+		sw $t2, 4($t8)
+		sw $t2, 8($t8)
+		sw $t2, 136($t8)
+		sw $t2, 256($t8)
+		sw $t2, 260($t8)
+		sw $t2, 264($t8)
+		sw $t2, 392($t8)
+		sw $t2, 512($t8)
+		sw $t2, 516($t8)
+		sw $t2, 520($t8)
 		beq $a0, 1, drawOnes
 		beq $a0, 0, end	
 	drawFour:
-		sw $t2, 0($t0)
-		sw $t2, 8($t0)
-		sw $t2, 128($t0)
-		sw $t2, 136($t0)
-		sw $t2, 256($t0)
-		sw $t2, 260($t0)
-		sw $t2, 264($t0)
-		sw $t2, 392($t0)
-		sw $t2, 520($t0)
+		sw $t2, 0($t8)
+		sw $t2, 8($t8)
+		sw $t2, 128($t8)
+		sw $t2, 136($t8)
+		sw $t2, 256($t8)
+		sw $t2, 260($t8)
+		sw $t2, 264($t8)
+		sw $t2, 392($t8)
+		sw $t2, 520($t8)
 		beq $a0, 1, drawOnes
 		beq $a0, 0, end	
 	drawFive:
-		sw $t2, 0($t0)
-		sw $t2, 4($t0)
-		sw $t2, 8($t0)
-		sw $t2, 128($t0)
-		sw $t2, 256($t0)
-		sw $t2, 260($t0)
-		sw $t2, 264($t0)
-		sw $t2, 392($t0)
-		sw $t2, 512($t0)
-		sw $t2, 516($t0)
-		sw $t2, 520($t0)
+		sw $t2, 0($t8)
+		sw $t2, 4($t8)
+		sw $t2, 8($t8)
+		sw $t2, 128($t8)
+		sw $t2, 256($t8)
+		sw $t2, 260($t8)
+		sw $t2, 264($t8)
+		sw $t2, 392($t8)
+		sw $t2, 512($t8)
+		sw $t2, 516($t8)
+		sw $t2, 520($t8)
 		beq $a0, 1, drawOnes
 		beq $a0, 0, end	
 	drawSix:
-		sw $t2, 0($t0)
-		sw $t2, 4($t0)
-		sw $t2, 8($t0)
-		sw $t2, 128($t0)
-		sw $t2, 256($t0)
-		sw $t2, 260($t0)
-		sw $t2, 264($t0)
-		sw $t2, 384($t0)
-		sw $t2, 392($t0)
-		sw $t2, 512($t0)
-		sw $t2, 516($t0)
-		sw $t2, 520($t0)
+		sw $t2, 0($t8)
+		sw $t2, 4($t8)
+		sw $t2, 8($t8)
+		sw $t2, 128($t8)
+		sw $t2, 256($t8)
+		sw $t2, 260($t8)
+		sw $t2, 264($t8)
+		sw $t2, 384($t8)
+		sw $t2, 392($t8)
+		sw $t2, 512($t8)
+		sw $t2, 516($t8)
+		sw $t2, 520($t8)
 		beq $a0, 1, drawOnes
 		beq $a0, 0, end	
 	drawSeven:
-		sw $t2, 0($t0)
-		sw $t2, 4($t0)
-		sw $t2, 8($t0)
-		sw $t2, 128($t0)
-		sw $t2, 136($t0)
-		sw $t2, 264($t0)
-		sw $t2, 392($t0)
-		sw $t2, 520($t0)
+		sw $t2, 0($t8)
+		sw $t2, 4($t8)
+		sw $t2, 8($t8)
+		sw $t2, 128($t8)
+		sw $t2, 136($t8)
+		sw $t2, 264($t8)
+		sw $t2, 392($t8)
+		sw $t2, 520($t8)
 		beq $a0, 1, drawOnes
 		beq $a0, 0, end	
 	drawEight:
-		sw $t2, 0($t0)
-		sw $t2, 4($t0)
-		sw $t2, 8($t0)
-		sw $t2, 128($t0)
-		sw $t2, 136($t0)
-		sw $t2, 256($t0)
-		sw $t2, 260($t0)
-		sw $t2, 264($t0)
-		sw $t2, 384($t0)
-		sw $t2, 392($t0)
-		sw $t2, 512($t0)
-		sw $t2, 516($t0)
-		sw $t2, 520($t0)
+		sw $t2, 0($t8)
+		sw $t2, 4($t8)
+		sw $t2, 8($t8)
+		sw $t2, 128($t8)
+		sw $t2, 136($t8)
+		sw $t2, 256($t8)
+		sw $t2, 260($t8)
+		sw $t2, 264($t8)
+		sw $t2, 384($t8)
+		sw $t2, 392($t8)
+		sw $t2, 512($t8)
+		sw $t2, 516($t8)
+		sw $t2, 520($t8)
 		beq $a0, 1, drawOnes
 		beq $a0, 0, end	
 	drawNine:
-		sw $t2, 0($t0)
-		sw $t2, 4($t0)
-		sw $t2, 8($t0)
-		sw $t2, 128($t0)
-		sw $t2, 136($t0)
-		sw $t2, 256($t0)
-		sw $t2, 260($t0)
-		sw $t2, 264($t0)
-		sw $t2, 392($t0)
-		sw $t2, 512($t0)
-		sw $t2, 516($t0)
-		sw $t2, 520($t0)
+		sw $t2, 0($t8)
+		sw $t2, 4($t8)
+		sw $t2, 8($t8)
+		sw $t2, 128($t8)
+		sw $t2, 136($t8)
+		sw $t2, 256($t8)
+		sw $t2, 260($t8)
+		sw $t2, 264($t8)
+		sw $t2, 392($t8)
+		sw $t2, 512($t8)
+		sw $t2, 516($t8)
+		sw $t2, 520($t8)
 		beq $a0, 1, drawOnes
 		beq $a0, 0, end		
 	end: 
-		lw $t0, displayAddress
+		lw $t8, displayAddress
 		jr $ra
-		 
+
+clearScore:
+	la $t4, colors
+	lw $t4, 0($t4)
+	
+	sw $t4, 0($a1)
+	sw $t4, 4($a1)
+	sw $t4, 8($a1)
+	sw $t4, 128($a1)
+	sw $t4, 132($a1)
+	sw $t4, 136($a1)
+	sw $t4, 256($a1)
+	sw $t4, 260($a1)
+	sw $t4, 264($a1)
+	sw $t4, 384($a1)
+	sw $t4, 388($a1)
+	sw $t4, 392($a1)
+	sw $t4, 512($a1)
+	sw $t4, 516($a1)
+	sw $t4, 520($a1)
+	
+	addi $a1, $a1, 16
+	sw $t4, 0($a1)
+	sw $t4, 4($a1)
+	sw $t4, 8($a1)
+	sw $t4, 128($a1)
+	sw $t4, 132($a1)
+	sw $t4, 136($a1)
+	sw $t4, 256($a1)
+	sw $t4, 260($a1)
+	sw $t4, 264($a1)
+	sw $t4, 384($a1)
+	sw $t4, 388($a1)
+	sw $t4, 392($a1)
+	sw $t4, 512($a1)
+	sw $t4, 516($a1)
+	sw $t4, 520($a1)
+	
+	jr $ra
+	
+	
 Exit:
 	li $v0, 10 
 	syscall
