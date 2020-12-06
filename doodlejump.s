@@ -124,6 +124,14 @@ main:
 		# Game loop
 		RUN: 	
 			jal printScore
+			
+			lw $t4, boostLocation
+			li $v0, 1
+			move $a0, $t4
+			syscall
+			li $v0, 4
+			la $a0, newline
+			syscall 
 				
 			# if there is fuel, then use the boost (jetpack or spring)
 			lw $t4, boostFuel
@@ -555,7 +563,7 @@ moveSpringDown:
 
 	sw $t5, boostLocation
    		
-	bge $t0, 268468120, springGone
+	bge $t5, 268473000, springGone
 	jr $ra
 	springGone:
 		sw $zero, boostAvailable
@@ -595,7 +603,7 @@ moveJetpackDown:
 	
 	sw $t5, boostLocation
    		
-	bge $t0, 268468120, jetpackGone
+	bge $t5, 268472000, jetpackGone
 	jr $ra
 	jetpackGone:
 		sw $zero, boostAvailable
@@ -632,6 +640,7 @@ createPlatform:
    	beq $t2, 3, drawSpring
    	beq $t2, 30, drawSpring
    	beq $t2, 10, drawJetpack
+   	beq $t2, 11, drawJetpack
    	beq $t2, 45, drawJetpack
    	beq $t2, 90, drawJetpack
 
@@ -687,6 +696,12 @@ hitBoost:
 		jr $ra
 	
 	activateBoost:
+		addi $sp, $sp, -4
+		sw $ra, 0($sp)
+		li $a0, 1
+		jal createNoti
+		lw $ra, 0($sp)
+		
 		li $t4, 1
 		sw $t4, boostActivated
 		sw $zero, boostAvailable
@@ -697,7 +712,7 @@ hitBoost:
 		beq $t4, 1, jetBoost
 
 		springBoost:
-			# spring lasts for 3 scrolls
+			# spring lasts for 7 scrolls
 			li $t4, 7
 			j addFuel
 		jetBoost:
@@ -1466,6 +1481,7 @@ printScore:
 	lw $t2, 28($t1)
 	lw $t4, gameActive
 	beq $t4, 1, moveToLeft
+	j moveToMiddle
 	moveToLeft:
 		li $t7, 3296
 		j drawHundreds
