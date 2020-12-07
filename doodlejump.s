@@ -13,38 +13,45 @@
 # - Base Address for Display: 0x10008000 ($gp)
 #
 # Which milestone is reached in this submission?
-# (See the assignment handout for descriptions of the milestones)
-# - Milestone 4/5 (choose the one the applies)
+# - Milestone 5 
 #
 # Which approved additional features have been implemented?
-# (See the assignment handout for the list of additional features)
-# 1. Fancier graphics
-# 2. Dynamic notifications
-# 3. Boosting/powerups
-# ... (add more if necessary)
-#
+# 1. Fancier graphics - start/end screen, background clouds, unique platform design
+# 2. Dynamic notifications - popup on certain scores, popup when hitting boosts
+# 3. Boosting/powerups - springs and jetpack
+# 
 # Link to video demonstration for final submission:
-# - (insert YouTube / MyMedia / other URL here). 
+# - https://play.library.utoronto.ca/9e1ab2d9bc3cf056099b62088988966b 
 #
 # Any additional information that the TA needs to know:
-# - (write here, if any)
+# - Sorry for long/kinda ugly code.
+# - Milestone 4 Features - Score & Increase in Difficulty
 #
 #####################################################################
+.eqv BACKGROUND 0xFF3E7EAC
+.eqv DOODLER 0xFFDB4D6A
+.eqv PLATFORM 0xFF9ABFD9
+.eqv CLOUDS 0xFFEFF5F9
+.eqv TEXT 0xFF4DDBBD
+.eqv SCORE 0xFFFF6347
+.eqv NOTIFICATION_TEXT 0xFFFAE549
+.eqv NOTIFICATION_BACKGROUND 0xFFCD853F
+
 .data
 	displayAddress:		.word 0x10008000
-	gameActive:		.word 0
+	gameActive:			.word 0
 	platforms: 			.word 0, 0, 0 
 	jumpHeight:			.word 10
 	score: 				.word 0
 	boostFuel:			.word 0
-	boostAvailable:	.word 0
-	boostActivated:	.word 0
-	boostLocation:	.word 0
-	boostType:		.word 0
-	speed:				.word 75	# initial speed
-	notif:				.word 0, 0 	# timer, type of noti (wow - 0, yay- 1, woo- 2)
+	boostAvailable:		.word 0
+	boostActivated:		.word 0
+	boostLocation:		.word 0
+	boostType:			.word 0
+	speed:				.word 75
+	notif:				.word 0
 	scrollGrace:		.word 1
-	colors: 			.word 0xFF3E7EAC 0xFFDB4D6A 0xFF9ABFD9, 0xFFEFF5F9 0xFF4DDBBD, 0xFFFF6347, 0xFFFAE549, 0xFFCD853F # background, ball, level, clouds, text, score, notiText, notiBackground
+	colors: 			.word BACKGROUND, DOODLER, PLATFORM, CLOUDS, TEXT, SCORE, NOTIFICATION_TEXT, NOTIFICATION_BACKGROUND
 	newline: 			.asciiz "\n"
 
 .globl main
@@ -113,12 +120,9 @@ main:
 		li $a1, 8
 		jal createPlatform
 		
-		# add colors to stack
-		lw $t2, 0($t1)
-		sw $t2, 0($sp)
-		
 		# Jump height limit counter (limit = 10)
 		li $t9, 0
+		# This assigns new platform location to the correct index in the array - platforms
 		li $t3, 0
 				
 		# Game loop
@@ -126,12 +130,6 @@ main:
 			jal printScore
 			
 			lw $t4, boostLocation
-			li $v0, 1
-			move $a0, $t4
-			syscall
-			li $v0, 4
-			la $a0, newline
-			syscall 
 				
 			# if there is fuel, then use the boost (jetpack or spring)
 			lw $t4, boostFuel
@@ -147,15 +145,17 @@ main:
 			flyDown:
 				# before flying to next block, push it's colors so you can pop and repaint later
 				jal RepaintFlyDown
+				# move the doodler one level down on screen
 				li $a0, 128
 				jal changeY
-				# check if doodle hit any boost
+				# check if doodle hit any boost or platform
 				jal hitBoost
 				jal hitLevel
 				j continue
 			flyUp:
 				# before flying to next block, push it's colors so you can pop and repaint later
 				jal RepaintFlyUp
+				# move the doodler one level up on screen
 				li $a0, -128
 				jal changeY
 				# check if doodle hit any boost
@@ -218,16 +218,8 @@ Scroll:
 	# move doodler up while boosting
 	boostActive:
 		jal RepaintFlyUp
-		lw $t4, boostType
-		beq $t0, 0, springBoostDoodlerUp
-		j jetpackBoostDoodlerUp
-		springBoostDoodlerUp:
-			li $a0, -1024
-			j moveDoodlerUp
-		jetpackBoostDoodlerUp:
-			li $a0, -128
-		moveDoodlerUp:
-			jal changeY
+		li $a0, -128
+		jal changeY
 		
 	init:	
 		li $t6, 0
@@ -236,7 +228,7 @@ Scroll:
 
 	# loop over all platforms and move them down
 	loopPlatforms:
-		# done moving them down, so create a new one on top of screen
+		# done moving them down, so create a new platform on top of screen
 		beq $t6, 3, addLevelAndContinue
 		
 		# load next platform and move it down
@@ -252,7 +244,7 @@ Scroll:
 	lowerLevel:
 		# lower upper blocks of platform
 		lowerTopHalf:
-			# load blue, green
+			# load sky blue, platform blue
 			lw $t2, 0($t1)
 			lw $t5, 8($t1)
 			
@@ -282,10 +274,11 @@ Scroll:
 			addi $t4, $t4, 1
 			blt $t4, 8, lowerTopHalf
 			li $t4, 0
+			# move $s4 location to match lowerBottomHalf of the platform (1 level down, 6 blocks left)
 			addi $s4, $s4, 104
-		# lower upper blocks of platforms
+		# lower lower blocks of platforms
 		lowerBottomHalf:
-			# load blue, green
+			# load sky blue, platform blue
 			lw $t2, 0($t1)
 			lw $t5, 8($t1)
 
@@ -311,7 +304,6 @@ Scroll:
 			addi $s4, $s4, 4
 			addi $t4, $t4, 1
 			blt $t4, 4, lowerBottomHalf
-		
 	
 		# update level to new location (896 - 128 - 24 = vertical diff - horizontal shift)
 		addi $s4, $s4, 744
@@ -322,11 +314,12 @@ Scroll:
 		jr $ra
 	
 	addLevelAndContinue:
-		lw $t4, boostAvailable # not if using jetpack but if its on the screen somewhere
+		lw $t4, boostAvailable # move boost -> not if using boost but if its on the screen somewhere
 		beq $t4, 1, moveBoost
-		lw $t4, boostActivated # if using jetpack, still need to move it down
+		lw $t4, boostActivated # move boost -> if using boost, still need to move it down
 		beq $t4, 1, moveBoost
 		j addPlatform
+
 		moveBoost:
 			lw $t4, boostType
 			beq $t4, 0, spring
@@ -337,27 +330,35 @@ Scroll:
 				j addPlatform
 			rocket:
 				jal moveJetpackDown
+
+		# create new platform at top of screen
 		addPlatform:
 			li $a0, 11
 			li $a1, 8
 			jal createPlatform
 			addi $t3, $t3, 4
 			ble $t3, 8, continue
+
+		# remember: $t3 stores which index to add new platform to in array - platforms	
 		updatePlatformCounter:
 			li $t3, 0
 			lw $ra, 0($sp)
 			addi $sp, $sp, 4
 			j continue
 
+# change speed, jump height, add notifications
 UpdateDifficulty:
+	# update score by 1
 	lw $t4, score
 	addi $t4, $t4, 1
 	sw $t4, score
 	
+	# update speed according to score reached
 	beq $t4, 40, increaseSpeed45
 	beq $t4, 20, increaseSpeed50
 	beq $t4, 10, increaseSpeed60
 	jr $ra
+
 	increaseSpeed60:
 		addi $sp, $sp, -4
 		sw $ra, 0($sp)
@@ -394,14 +395,18 @@ UpdateDifficulty:
    	
 
 createNoti:
+	# noti stays on screen for 5 scrolls
    	la $t5, notif
-   	li $t4, 5		# noti stays on screen for 5 scrolls
+   	li $t4, 5		
    	sw $t4, 0($t5)		
 	
+	# store return b/c calling recursively later
 	addi $sp, $sp, -4
 	sw $ra, 0($sp)
 	
-	lw $a1, 24($t1) # set color of text to be yellow
+	# set color of text to be yellow
+	lw $a1, 24($t1) 
+	# print text according to argument provided 
 	beq $a0, 0, wow
 	beq $a0, 1, yay
 	beq $a0, 2, woo
@@ -419,6 +424,7 @@ createNoti:
 		addi $sp, $sp, 4
 		jr $ra
 
+# lowers fuel on each scroll if boost activated
 decrementboostFuel:
 	lw $t4, boostFuel
 	bgt $t4, 0, loseFuel
@@ -440,9 +446,10 @@ decrementNoti:
 		addi $t4, $t4, -1
 		sw $t4, 0($t5)
 		
-		# has reached time limit -> clear now
+		# has reached time limit -> clear notification, else return
 		beq $t4, 0, clearNoti
 		jr $ra
+
 		clearNoti:
 			addi $sp, $sp, -4
 			sw $ra, 0($sp)
@@ -563,6 +570,7 @@ moveSpringDown:
 
 	sw $t5, boostLocation
    		
+	# if spring scrolls below screen, change status
 	bge $t5, 268473000, springGone
 	jr $ra
 	springGone:
@@ -586,23 +594,24 @@ moveJetpackDown:
    	sw $t2, -112($t5)
    	sw $t2, -244($t5)
    	
-	# color area below matching spring shape
+	# color area below matching jetpack shape
 	addi $t5, $t5, 896
-	lw $t2, 24($t1)  # blue
+	lw $t2, 24($t1)  
    	sw $t2, -376($t5) 
    	sw $t2, -248($t5)
    	sw $t2, -120($t5)
    	sw $t2, -116($t5)
-   	lw $t2, 4($t1)  # red
+   	lw $t2, 4($t1)  
    	sw $t2, -372($t5)
    	sw $t2, -368($t5)
    	sw $t2, -240($t5)
    	sw $t2, -112($t5)
-   	lw $t2, 12($t1) # white
+   	lw $t2, 12($t1) 
    	sw $t2, -244($t5)
 	
 	sw $t5, boostLocation
-   		
+   	
+	# if jetpack scrolls below screen, change status
 	bge $t5, 268472000, jetpackGone
 	jr $ra
 	jetpackGone:
@@ -725,15 +734,15 @@ hitBoost:
 hitLevel: 
 	la $t8, platforms
 	
-	# if block below is green (middle unit)
+	# if block below is plat color (middle unit)
 	lw $t5, 4160($t0)
 	beq $t5, -6635559, resetFly
 	
-	# if block below is green (right unit)
+	# if block below is plat color (right unit)
 	lw $t5, 4164($t0)
 	beq $t5, -6635559, resetFly
 	
-	# if block below is green (left unit)
+	# if block below is plat color (left unit)
 	lw $t5, 4168($t0)
 	beq $t5, -6635559, resetFly
 
@@ -786,22 +795,22 @@ drawJetpack:
    		li $t2, 1
    		sw $t2, boostAvailable
    		
-   		lw $t2, 24($t1)  # blue
+   		lw $t2, 24($t1) 
    		sw $t2, -376($t5) 
    		sw $t2, -248($t5)
    		sw $t2, -120($t5)
    		sw $t2, -116($t5)
    		
-   		lw $t2, 4($t1)  # red
+   		lw $t2, 4($t1) 
    		sw $t2, -372($t5)
    		sw $t2, -368($t5)
    		sw $t2, -240($t5)
    		sw $t2, -112($t5)
    		
-   		lw $t2, 12($t1) # white
+   		lw $t2, 12($t1) 
    		sw $t2, -244($t5)
    		
-   		li $t2, 1 # 1 - jetpack
+   		li $t2, 1 # 1 = jetpack
    		sw $t2, boostType
    		sw $t5, boostLocation
 		j drawPlat
@@ -813,7 +822,7 @@ drawSpring:
    		li $t2, 1
    		sw $t2, boostAvailable
    		
-   		lw $t2, 12($t1) # white
+   		lw $t2, 12($t1) 
    		sw $t2, -376($t5) 
    		sw $t2, -248($t5)
    		sw $t2, -120($t5)
@@ -821,8 +830,9 @@ drawSpring:
    		sw $t2, -372($t5)
    		sw $t2, -240($t5)
    		sw $t2, -112($t5)
+
    		sw $t5, boostLocation
-   		sw $zero, boostType # 0 - spring
+   		sw $zero, boostType # 0 = spring
    		j drawPlat
 
 drawClouds:
@@ -1461,9 +1471,6 @@ scoreText:
 	addi $t0, $t0, 16
 	sw $t2, 128($t0)
 	sw $t2, 384($t0)
-
-
-	addi $t0, $t0, 16
 	
 	lw $t0, displayAddress
 	jr $ra
@@ -1472,6 +1479,7 @@ printScore:
 	la $t1, colors	
 	lw $t8, displayAddress
 	
+	# use div to get ones and tens digit
 	li $t2, 10
 	lw $t4, score
 	div $t4, $t2
@@ -1480,17 +1488,22 @@ printScore:
 	
 	lw $t2, 28($t1)
 	lw $t4, gameActive
-	beq $t4, 1, moveToLeft
+
+	# score will be on right (in game), score will in middle (post game)
+	beq $t4, 1, moveToRight
 	j moveToMiddle
-	moveToLeft:
+
+	moveToRight:
 		li $t7, 3296
-		j drawHundreds
+		j drawTens
 	moveToMiddle:
 		li $t7, 3248
 		
-	drawHundreds:
+	# draw the tens value of the score
+	drawTens:
 		add $t8, $t8, $t7
 		
+		# first clear the current digit 
 		move $a1, $t8
 		addi $sp, $sp, -4
 		sw $ra, 0($sp)
@@ -1498,6 +1511,7 @@ printScore:
 		lw $ra, 0($sp)
 		addi $sp, $sp, 4
 		
+		# a0 = 1 means to come back and draw ones digit after tens digit
 		li $a0, 1
 		beq $t5, 0, drawZero
 		beq $t5, 1, drawOne
@@ -1512,6 +1526,8 @@ printScore:
 		
 	drawOnes:
 		addi $t8, $t8, 16
+
+		# a0 = 0 means to continue b/c both digits are done being drawn
 		li $a0, 0
 		beq $t6, 0, drawZero
 		beq $t6, 1, drawOne
@@ -1669,6 +1685,7 @@ clearScore:
 	la $t4, colors
 	lw $t4, 0($t4)
 	
+	# clear tens digit
 	sw $t4, 0($a1)
 	sw $t4, 4($a1)
 	sw $t4, 8($a1)
@@ -1685,6 +1702,7 @@ clearScore:
 	sw $t4, 516($a1)
 	sw $t4, 520($a1)
 	
+	# clear ones digit
 	addi $a1, $a1, 16
 	sw $t4, 0($a1)
 	sw $t4, 4($a1)
@@ -1704,25 +1722,9 @@ clearScore:
 	
 	jr $ra
 	
-	
+# quit game
 Exit:
 	li $v0, 10 
 	syscall
 	
-	# Text layout
-	sw $t2, 0($t0)
-	sw $t2, 4($t0)
-	sw $t2, 8($t0)
-	sw $t2, 128($t0)
-	sw $t2, 132($t0)
-	sw $t2, 136($t0)
-	sw $t2, 256($t0)
-	sw $t2, 260($t0)
-	sw $t2, 264($t0)
-	sw $t2, 384($t0)
-	sw $t2, 388($t0)
-	sw $t2, 392($t0)
-	sw $t2, 512($t0)
-	sw $t2, 516($t0)
-	sw $t2, 520($t0)
 		 
