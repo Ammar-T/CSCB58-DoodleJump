@@ -1,5 +1,5 @@
 # b58-project
-DoodleJump implementation using MIPS. Final Project for CSCB58 in Fall 2020.
+DoodleJump implementation in assembly. 
 
 ## Getting Started
 -  [Download MARS 4.5](http://courses.missouristate.edu/kenvollmar/mars/)
