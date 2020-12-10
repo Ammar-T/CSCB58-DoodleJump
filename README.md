@@ -11,6 +11,7 @@ DoodleJump implementation in assembly.
 -  Click 'Connect to MIPS'
 
 ## Controls
+- Press 's' and 'r' to start/restart game. Press 'q' to quit game.
 - To move left: type in 'j' into the keyboard simulator
 - To move right: type in 'k' into the keyboard simulator
 
