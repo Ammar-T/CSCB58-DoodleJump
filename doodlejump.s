@@ -1,33 +1,3 @@
-#####################################################################
-#
-# CSCB58 Fall 2020 Assembly Final Project
-# University of Toronto, Scarborough
-#
-# Student: Ammar Tariq, 1006143317
-#
-# Bitmap Display Configuration:
-# - Unit width in pixels: 16					     
-# - Unit height in pixels: 16
-# - Display width in pixels: 512
-# - Display height in pixels: 512
-# - Base Address for Display: 0x10008000 ($gp)
-#
-# Which milestone is reached in this submission?
-# - Milestone 5 
-#
-# Which approved additional features have been implemented?
-# 1. Fancier graphics - start/end screen, background clouds, unique platform design
-# 2. Dynamic notifications - popup on certain scores, popup when hitting boosts
-# 3. Boosting/powerups - springs and jetpack
-# 
-# Link to video demonstration for final submission:
-# - https://play.library.utoronto.ca/9e1ab2d9bc3cf056099b62088988966b 
-#
-# Any additional information that the TA needs to know:
-# - Sorry for long/kinda ugly code.
-# - Milestone 4 Features - Score & Increase in Difficulty
-#
-#####################################################################
 .eqv BACKGROUND 0xFF3E7EAC
 .eqv DOODLER 0xFFDB4D6A
 .eqv PLATFORM 0xFF9ABFD9
