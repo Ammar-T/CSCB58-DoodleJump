@@ -2,7 +2,7 @@
 DoodleJump implementation in assembly. 
 
 ## Getting Started
--  [Download MARS 4.5](http://courses.missouristate.edu/kenvollmar/mars/)
+-  Open MARS 4.5
 -  Go to <b>Tools</b> -> <b>Bitmap Display</b>
 -  Configure based on settings listed on top of file 'doodlejump.s'
 -  Click 'Connect to MIPS'
