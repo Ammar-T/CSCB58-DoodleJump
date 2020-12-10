@@ -1,4 +1,4 @@
-# b58-project
+# CSCB58-DoodleJump
 DoodleJump implementation in assembly. 
 
 ## Getting Started
